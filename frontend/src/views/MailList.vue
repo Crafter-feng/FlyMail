@@ -66,6 +66,12 @@
           <button class="btn-icon mobile-filter-toggle" :class="{ active: hasActiveFilter }" @click="showMobileFilters = !showMobileFilters">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
           </button>
+          <!-- 一键全部已读：直接操作 IMAP 服务器，不受分页/缓存限制 -->
+          <button class="btn-icon mark-all-read-btn" :class="{ confirming: markAllReadConfirm }" @click="markAllRead" :title="markAllReadConfirm ? '再次点击确认全部已读' : '全部已读'">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
+            </svg>
+          </button>
           <button class="btn-icon rebuild-btn" @click="rebuildSync" title="数据缓存不准确，可尝试清空缓存同步" :disabled="rebuilding">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
@@ -447,6 +453,47 @@ async function batchMarkRead() {
   }
 }
 
+/** 一键全部已读：直接操作 IMAP 服务器标记所有未读邮件，不受分页/缓存限制
+ *  后端通过 UID SEARCH UNSEEN 获取所有未读 UID 并批量标记，同时全量更新数据库缓存。
+ *  成功后必须清空 pageCache 再重新加载，避免旧分页缓存显示未读状态。
+ */
+async function markAllRead() {
+  // 两次点击确认机制：第一次点击提示确认，第二次点击执行
+  if (!onMarkAllReadConfirm('mail-list')) {
+    uiStore.info('再次点击确认将当前文件夹所有邮件标记为已读');
+    return;
+  }
+  clearMarkAllReadConfirm();
+  const accountId = mailStore.currentAccountId;
+  const folder = mailStore.currentFolder;
+  if (!accountId) {
+    uiStore.error('请先选择邮箱账号');
+    return;
+  }
+  uiStore.info('正在标记全部已读...');
+  try {
+    const res = await api.post('/messages/mark-all-read', {
+      account_ids: [accountId],
+      folder: folder,
+    });
+    const total = res.data?.total_marked ?? 0;
+    // 关键：清空前端分页缓存，避免旧缓存显示未读状态
+    pageCache.clear();
+    // 重新加载当前页列表（此时数据库已全部标记为已读）
+    await loadMessages();
+    // 刷新侧边栏未读数（folder_stats.unread_count 已置 0）
+    mailStore.loadFolderCounts();
+    if (total > 0) {
+      uiStore.success(`已标记 ${total} 封邮件为已读`);
+    } else {
+      uiStore.info('没有未读邮件');
+    }
+  } catch (e: any) {
+    console.error('全部已读失败:', e);
+    uiStore.error('全部已读失败：' + (e.response?.data?.detail || e.message || '网络错误'));
+  }
+}
+
 // 请求版本号：防止切换账号时旧请求的响应覆盖新数据
 let loadVersion = 0;
 
@@ -609,6 +656,8 @@ async function reauthorize(accountId?: string) {
 
 // 删除确认（使用 composable，两次点击确认机制）
 const { confirmTarget: deleteConfirm, requestConfirm: onDeleteConfirm } = useConfirmAction()
+// 全部已读确认（两次点击确认机制，避免误操作）
+const { confirmTarget: markAllReadConfirm, requestConfirm: onMarkAllReadConfirm, clearConfirm: clearMarkAllReadConfirm } = useConfirmAction()
 
 /** 删除邮件（两次点击确认机制） */
 async function onDeleteMessage() {
@@ -1101,6 +1150,15 @@ function downloadAttachment(att: Attachment) {
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+/* 全部已读按钮：确认状态高亮提示用户再次点击 */
+.mark-all-read-btn.confirming {
+  background: rgba(255, 159, 10, 0.15);
+  color: var(--accent-orange, #ff9500);
+}
+.mark-all-read-btn.confirming:hover {
+  background: rgba(255, 159, 10, 0.25);
 }
 
 /* 多选模式工具栏 */

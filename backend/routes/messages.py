@@ -27,6 +27,7 @@ from db import (
     update_cached_message_read,
     batch_delete_cached_messages,
     batch_update_cached_messages_read,
+    mark_all_cached_messages_read,
     get_unified_inbox_messages,
     get_unified_inbox_stats,
     get_unified_inbox_filter_counts,
@@ -45,7 +46,7 @@ from providers.factory import ProviderFactory
 from services.token import ensure_token as _ensure_gmail_token
 from services.sync import sync_service
 from services.mail_cache import sync_folder_to_cache, sync_missing_messages
-from services.attachments import build_upload_path, resolve_user_attachment_path
+from services.attachments import build_upload_path, resolve_user_attachment_path, MAX_SINGLE_FILE_SIZE
 from services.idle_manager import idle_manager, poll_manager
 from utils.logger import get_logger
 from utils.tasks import create_background_task
@@ -55,6 +56,8 @@ from schemas import (
     BatchMarkReadRequest,
     BatchMarkReadResponse,
     DeleteResponse,
+    MarkAllReadRequest,
+    MarkAllReadResponse,
     MessageItem,
     MessageListResponse,
     MessageResponse,
@@ -960,6 +963,9 @@ async def upload_attachment(request: Request, file: UploadFile = File(...)):
     safe_filename, file_path = build_upload_path(user_uid, file.filename)
 
     content = await file.read()
+    # 单文件大小检查，防止过大文件导致内存问题
+    if len(content) > MAX_SINGLE_FILE_SIZE:
+        raise AppError(413, f"单个文件不能超过 {MAX_SINGLE_FILE_SIZE // (1024 * 1024)}MB")
     with open(file_path, "wb") as f:
         f.write(content)
 
@@ -1225,6 +1231,96 @@ async def batch_mark_read(request: Request, body: BatchMarkReadRequest = Body(de
     except Exception as e:
         logger.error("批量标记已读失败: %s", e)
         raise AppError(500, str(e))
+
+
+async def _mark_one_account_all_read(account, folder: str, user_uid: str) -> dict:
+    """处理单个账号的全部已读（供 mark_all_read 并发调用）
+
+    流程：
+    1. IMAP UID SEARCH UNSEEN 获取所有未读 UID
+    2. IMAP UID STORE +FLAGS \\Seen 批量标记
+    3. DB mark_all_cached_messages_read 全量更新缓存
+    4. DB upsert_folder_stats(unread=0)
+    5. WebSocket 通知
+
+    返回 {"account_id", "email", "marked"}，失败时 marked=0。
+    """
+    try:
+        credentials = await _ensure_gmail_token(account)
+        receiver = await _get_cached_receiver(account, credentials)
+        try:
+            # 步骤1：直接从 IMAP 服务器获取所有未读 UID（不查数据库缓存）
+            uids = await receiver.fetch_unseen_uids(folder)
+            # 步骤2：批量标记为已读（每批500条 STORE 命令，空列表返回0）
+            marked = await receiver.mark_as_read_batch(
+                [str(u) for u in uids], folder
+            )
+        except Exception:
+            # 操作失败时清理缓存连接，下次会重建
+            _conn_cache.pop(account.id, None)
+            await _safe_disconnect(receiver)
+            raise
+
+        # 步骤3：全量更新数据库缓存为已读（不限于 SEARCH 返回的 UID，避免脏数据残留）
+        try:
+            await mark_all_cached_messages_read(account.id, folder)
+            # 步骤4：未读数置 0，total 保持原值
+            stats = await get_folder_stats(account.id, folder)
+            await upsert_folder_stats(
+                account.id, folder, stats.get("total_count", 0), 0
+            )
+        except Exception as e:
+            logger.error("全部已读缓存更新失败: account=%s, error=%s", account.email, e)
+
+        # 步骤5：通知其他标签页邮件状态变化
+        try:
+            await sync_service.notify_message_state_changed(
+                account.id, "mark_read", [str(u) for u in uids],
+                folder=folder, user_uid=user_uid
+            )
+        except Exception as e:
+            logger.debug("全部已读 WebSocket 通知失败: %s", e)
+
+        return {"account_id": account.id, "email": account.email, "marked": marked}
+    except Exception as e:
+        logger.error("全部已读失败 account=%s: %s", account.email, e)
+        # 单个账号失败返回 marked=0，不影响其他账号
+        return {"account_id": account.id, "email": account.email, "marked": 0}
+
+
+@router.post("/api/messages/mark-all-read", response_model=MarkAllReadResponse, summary="一键全部已读")
+async def mark_all_read(request: Request, body: MarkAllReadRequest = Body(description="一键全部已读请求")):
+    """将指定账号+文件夹下的所有未读邮件标记为已读（不受分页/数据库缓存限制）
+
+    多账号并发处理：用 asyncio.gather 同时执行各账号的 IMAP SEARCH+STORE，
+    避免串行等待。单账号失败不影响其他账号。
+
+    单账号流程：
+    1. IMAP UID SEARCH UNSEEN —— 直接从邮件服务器获取所有未读 UID（不查数据库缓存）
+    2. IMAP UID STORE +FLAGS \\Seen —— 批量标记（每批500，失败回退逐条）
+    3. DB mark_all_cached_messages_read —— 全量更新该文件夹缓存为已读
+       （不限于 SEARCH 返回的 UID，避免数据库残留未读脏数据）
+    4. DB upsert_folder_stats(unread=0) —— 未读数置 0
+    5. WebSocket 通知其他标签页刷新
+    """
+    user_uid = await get_uid(request)
+    accounts = await get_accounts(user_uid)
+    if not accounts:
+        raise AppError(404, "未找到任何账号")
+
+    # 按 body.account_ids 过滤出需要处理的账号（保留顺序，便于结果返回）
+    account_map = {acc.id: acc for acc in accounts}
+    target_accounts = [account_map[aid] for aid in body.account_ids if aid in account_map]
+    if not target_accounts:
+        raise AppError(404, "未找到指定的账号")
+
+    # 并发处理所有账号：各账号 IMAP 连接独立，互不干扰
+    # _mark_one_account_all_read 内部已捕获所有异常，不会抛出，故无需 return_exceptions
+    tasks = [_mark_one_account_all_read(acc, body.folder, user_uid) for acc in target_accounts]
+    results = await asyncio.gather(*tasks)
+
+    total_marked = sum(r.get("marked", 0) for r in results)
+    return {"success": True, "results": results, "total_marked": total_marked}
 
 
 # 写信/定时发送接口已拆分到 routes/compose.py

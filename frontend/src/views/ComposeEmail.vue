@@ -208,7 +208,10 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
             附件
           </label>
-          <span v-if="attachments.length" class="attachments-count">{{ attachments.length }}个</span>
+          <span v-if="attachments.length" class="attachments-count">
+            {{ attachments.length }}个 · {{ formatSize(totalAttachmentSize) }} / {{ attachmentLimitMb }}MB
+            <span v-if="isAttachmentOverLimit" class="att-warning">超限</span>
+          </span>
         </div>
         <div v-if="attachments.length" class="attachments-list">
           <div v-for="(att, i) in attachments" :key="i" class="attachment-item">
@@ -217,6 +220,10 @@
             <span class="att-size">{{ formatSize(att.size) }}</span>
             <button class="att-remove" @click="removeAttachment(i)">&times;</button>
           </div>
+        </div>
+        <!-- 超限提示 -->
+        <div v-if="isAttachmentOverLimit" class="att-over-limit-tip">
+          附件总大小超过当前邮箱限制（{{ attachmentLimitMb }}MB），发送将被拒绝，请减少附件或使用更小的文件
         </div>
       </div>
     </div>
@@ -353,6 +360,28 @@ const bccInput = ref('');
 const attachments = ref<{ filename: string; size: number; path: string }[]>([]);
 const isDragging = ref(false);
 
+// 各邮箱平台附件大小限制（MB），与后端 services/attachments.py 保持一致
+const PROVIDER_ATTACHMENT_LIMITS: Record<string, number> = {
+  gmail: 18, qq: 35, netease: 35, icloud: 15, outlook: 15, sina: 15, custom: 20,
+};
+
+// 当前选中账号的附件大小限制（MB）
+const attachmentLimitMb = computed(() => {
+  const acc = accounts.value.find(a => a.id === fromAccountId.value);
+  const provider = acc?.provider || '';
+  return PROVIDER_ATTACHMENT_LIMITS[provider] || 15;
+});
+
+// 附件总大小（字节）
+const totalAttachmentSize = computed(() =>
+  attachments.value.reduce((sum, a) => sum + a.size, 0)
+);
+
+// 附件是否超限
+const isAttachmentOverLimit = computed(() =>
+  totalAttachmentSize.value > attachmentLimitMb.value * 1024 * 1024
+);
+
 // 状态
 const sending = ref(false);
 const savingDraft = ref(false);
@@ -366,7 +395,7 @@ let toastTimer: ReturnType<typeof setTimeout> | null = null;
 function showToast(message: string, type: 'success' | 'error' | 'info' = 'success') {
   if (toastTimer) clearTimeout(toastTimer);
   toast.value = { visible: true, message, type };
-  toastTimer = setTimeout(() => { toast.value.visible = false; }, 2500);
+  toastTimer = setTimeout(() => { toast.value.visible = false; }, type === 'error' ? 5000 : 2500);
 }
 
 // ---- 确认对话框（替代 confirm） ----
@@ -796,6 +825,12 @@ async function handleDrop(event: DragEvent) {
 }
 
 async function uploadFile(file: File) {
+  // 前端预检查：文件超过当前邮箱平台的附件限制时，提示具体限制值
+  const limitBytes = attachmentLimitMb.value * 1024 * 1024;
+  if (file.size > limitBytes) {
+    showToast(`文件 ${file.name}（${formatSize(file.size)}）超过当前邮箱附件限制（${attachmentLimitMb.value}MB）`, 'error');
+    return;
+  }
   const formData = new FormData();
   formData.append('file', file);
   try {
@@ -808,7 +843,9 @@ async function uploadFile(file: File) {
       path: data.path,
     });
   } catch (e: any) {
-    showToast('上传附件失败: ' + file.name, 'error');
+    // 优先显示后端返回的友好错误信息
+    const msg = e?.response?.data?.detail || e?.message || '上传失败';
+    showToast(`${file.name}: ${msg}`, 'error');
   }
 }
 
@@ -1063,6 +1100,24 @@ function formatSize(bytes: number): string {
 .attachments-count {
   font-size: 12px;
   color: var(--text-tertiary);
+}
+
+/* 超限标记 */
+.att-warning {
+  color: var(--color-red, #ff3b30);
+  font-weight: 600;
+  margin-left: 4px;
+}
+
+/* 超限提示条 */
+.att-over-limit-tip {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(255, 59, 48, 0.1);
+  color: var(--color-red, #ff3b30);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .upload-btn {
@@ -1373,12 +1428,14 @@ function formatSize(bytes: number): string {
   line-height: 1.5;
 }
 
-/* Toast 通知 */
+/* Toast 通知：用 left:0+right:0+margin:auto 居中，避免 translateX 导致动画跳动 */
 .toast {
   position: fixed;
   top: 20px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: fit-content;
   z-index: 300;
   display: flex;
   align-items: center;
@@ -1386,6 +1443,7 @@ function formatSize(bytes: number): string {
   padding: 10px 20px;
   border-radius: 8px;
   font-size: 14px;
+  white-space: nowrap;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
   pointer-events: none;
 }
@@ -1406,23 +1464,15 @@ function formatSize(bytes: number): string {
   border: 1px solid var(--border-color);
 }
 
-/* Toast 动画 */
-.toast-enter-active {
-  transition: all 0.3s ease-out;
-}
-
+/* Toast 动画：只淡入淡出，不移动位置，彻底避免跳动 */
+.toast-enter-active,
 .toast-leave-active {
-  transition: all 0.2s ease-in;
+  transition: opacity 0.25s ease;
 }
 
-.toast-enter-from {
-  opacity: 0;
-  transform: translateX(-50%) translateY(-20px);
-}
-
+.toast-enter-from,
 .toast-leave-to {
   opacity: 0;
-  transform: translateX(-50%) translateY(-10px);
 }
 
 /* 移动端适配 */

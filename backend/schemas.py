@@ -199,6 +199,26 @@ class BatchMarkReadResponse(BaseModel):
     marked: int = Field(description="成功标记数量")
 
 
+class MarkAllReadRequest(BaseModel):
+    """一键全部已读请求：后端自行通过 IMAP SEARCH UNSEEN 获取未读 UID，前端无需传 UID 列表"""
+    account_ids: List[str] = Field(description="账号ID列表（聚合视图传多个，邮件视图传单个）")
+    folder: str = Field(default="INBOX", description="文件夹路径")
+
+
+class MarkAllReadAccountResult(BaseModel):
+    """单个账号的全部已读结果"""
+    account_id: str = Field(description="账号ID")
+    email: str = Field(description="邮箱地址")
+    marked: int = Field(description="IMAP 标记成功的数量")
+
+
+class MarkAllReadResponse(BaseModel):
+    """一键全部已读响应"""
+    success: bool = Field(description="是否成功")
+    results: List[MarkAllReadAccountResult] = Field(description="各账号标记结果")
+    total_marked: int = Field(description="总计标记数量")
+
+
 class BatchDeleteRequest(BaseModel):
     message_ids: List[str] = Field(description="邮件ID列表")
     account_id: str = Field(default="", description="账号ID")

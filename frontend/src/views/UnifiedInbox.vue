@@ -31,6 +31,12 @@
           <button class="btn-icon mobile-filter-toggle" :class="{ active: hasActiveFilter }" @click="showMobileFilters = !showMobileFilters">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
           </button>
+          <!-- 一键全部已读：聚合视图标记所有聚合邮箱的未读邮件，非聚合邮箱不受影响 -->
+          <button v-if="hasUnifiedAccounts" class="btn-icon mark-all-read-btn" :class="{ confirming: markAllReadConfirm }" @click="markAllRead" :title="markAllReadConfirm ? '再次点击确认全部已读' : '全部已读'">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
+            </svg>
+          </button>
           <!-- 聚合设置按钮 -->
           <button class="btn-icon" @click="openSettings" title="聚合设置">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -355,6 +361,8 @@ const { selectMode, selectedIds, isAllSelected, enterSelectMode, exitSelectMode,
 
 // 删除确认（使用 composable，两次点击确认机制）
 const { confirmTarget: deleteConfirm, requestConfirm: onDeleteConfirm } = useConfirmAction()
+// 全部已读确认（两次点击确认机制，避免误操作）
+const { confirmTarget: markAllReadConfirm, requestConfirm: onMarkAllReadConfirm, clearConfirm: clearMarkAllReadConfirm } = useConfirmAction()
 
 // 请求版本号：防止并发请求时旧数据覆盖新数据
 let loadVersion = 0;
@@ -553,6 +561,47 @@ async function batchMarkRead() {
   }
 }
 
+/** 一键全部已读（聚合视图）：标记所有聚合邮箱的 INBOX 未读邮件
+ *  只处理参与聚合的邮箱（mailStore.unifiedAccountIds），非聚合邮箱不受影响。
+ *  后端通过 UID SEARCH UNSEEN 直接从 IMAP 服务器获取所有未读 UID 并批量标记。
+ *  成功后必须清空 pageCache 再重新加载，避免旧分页缓存显示未读状态。
+ */
+async function markAllRead() {
+  // 两次点击确认机制
+  if (!onMarkAllReadConfirm('unified')) {
+    uiStore.info('再次点击确认将所有聚合邮箱的未读邮件标记为已读');
+    return;
+  }
+  clearMarkAllReadConfirm();
+  const accountIds = mailStore.unifiedAccountIds;
+  if (!accountIds || accountIds.length === 0) {
+    uiStore.error('没有参与聚合的邮箱');
+    return;
+  }
+  uiStore.info('正在标记全部已读...');
+  try {
+    const res = await api.post('/messages/mark-all-read', {
+      account_ids: accountIds,
+      folder: 'INBOX',
+    });
+    const total = res.data?.total_marked ?? 0;
+    // 关键：清空前端分页缓存，避免旧缓存显示未读状态
+    pageCache.clear();
+    // 重新加载聚合列表（此时数据库已全部标记为已读）
+    await loadUnifiedMessages();
+    // 刷新侧边栏各邮箱未读数（folder_stats.unread_count 已置 0）
+    mailStore.loadFolderCounts();
+    if (total > 0) {
+      uiStore.success(`已标记 ${total} 封邮件为已读`);
+    } else {
+      uiStore.info('没有未读邮件');
+    }
+  } catch (e: any) {
+    console.error('全部已读失败:', e);
+    uiStore.error('全部已读失败：' + (e.response?.data?.detail || e.message || '网络错误'));
+  }
+}
+
 // ==================== 邮件操作 ====================
 
 /** 选择邮件查看详情（带竞态保护）
@@ -703,6 +752,9 @@ function downloadAttachment(att: Attachment) {
 .toolbar-right { display: flex; align-items: center; gap: var(--space-3); }
 .btn-icon { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: none; border-radius: 8px; background: transparent; color: var(--text-secondary); cursor: pointer; transition: all 0.15s; flex-shrink: 0; }
 .btn-icon:hover { background: var(--bg-hover); color: var(--accent-blue); }
+/* 全部已读按钮：确认状态高亮提示用户再次点击 */
+.mark-all-read-btn.confirming { background: rgba(255, 159, 10, 0.15); color: var(--accent-orange, #ff9500); }
+.mark-all-read-btn.confirming:hover { background: rgba(255, 159, 10, 0.25); }
 .list-count { font-size: var(--text-xs); color: var(--text-tertiary); font-weight: var(--font-medium); }
 
 /* 实时同步状态 */

@@ -806,6 +806,24 @@ async def batch_update_cached_messages_read(account_id: str, uids: list[int], fo
     return cursor.rowcount
 
 
+async def mark_all_cached_messages_read(account_id: str, folder: str) -> int:
+    """将该账号+文件夹下所有缓存邮件标记为已读（全量更新，不依赖 UID 列表）
+
+    与 batch_update_cached_messages_read 的区别：
+    - batch_update 按 UID 列表更新，只能更新 SEARCH UNSEEN 返回的
+    - mark_all 直接 UPDATE 全表，确保数据库里不会有残留的未读标记
+      （比如 IMAP 已读但数据库还标记为未读的脏数据）
+    用于"一键全部已读"功能。
+    """
+    db = await get_db()
+    cursor = await db.execute(
+        "UPDATE cached_messages SET is_read = 1 WHERE account_id = ? AND folder = ?",
+        (account_id, folder)
+    )
+    await db.commit()
+    return cursor.rowcount
+
+
 # ==================== 文件夹统计 CRUD ====================
 
 async def upsert_folder_stats(account_id: str, folder: str, total_count: int, unread_count: int) -> None:

@@ -19,7 +19,7 @@ from providers.factory import ProviderFactory
 from services.token import ensure_token as _ensure_gmail_token
 from services.sync import sync_service
 from services.mail_cache import sync_folder_to_cache
-from services.attachments import validate_attachment_paths
+from services.attachments import validate_attachment_paths, check_attachment_total_size
 from utils.logger import get_logger
 from schemas import (
     ComposeMessageRequest,
@@ -137,6 +137,8 @@ async def compose_message(request: Request, body: ComposeMessageRequest):
     attachment_paths = []
     if body.action in {"send", "schedule"}:
         attachment_paths = validate_attachment_paths(user_uid, body.attachments)
+        # 发送前检查附件总大小是否超过当前邮箱平台限制
+        check_attachment_total_size(attachment_paths, account.provider)
 
     # ---- 保存草稿 ----
     if body.action == "draft":
