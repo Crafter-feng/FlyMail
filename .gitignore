@@ -1,0 +1,46 @@
+# 依赖
+node_modules/
+package-lock.json
+__pycache__/
+*.pyc
+*.pyo
+
+# 构建产物
+dist/
+build/
+*.spec
+
+# 后端本地开发数据
+backend/data/
+backend/ui/
+
+# Cloudflare OAuth Broker（本地部署配置，不上传）
+cloudflare/
+
+# 项目主页（Cloudflare Pages 部署用，不上传）
+pages/
+
+# 项目文档与 CI（本地使用，不上传 GitHub）
+README.md
+doc/
+.github/
+
+# 飞牛OS 应用包（本地构建产物，不上传）
+flymail/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.trae/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# fnpack 生成的 fpk 文件
+*.fpk
+
+# 日志
+*.log
