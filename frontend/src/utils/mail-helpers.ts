@@ -9,6 +9,17 @@ export function extractName(addr: string): string {
   return addr.split('@')[0]
 }
 
+/**
+ * 从地址字符串中提取纯邮箱地址数组
+ * 输入: "张三 <a@qq.com>, 李四 <b@qq.com>" 或 "a@qq.com, b@qq.com"
+ * 输出: ["a@qq.com", "b@qq.com"]
+ */
+export function extractEmails(addrStr: string): string[] {
+  if (!addrStr) return []
+  const emails = addrStr.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g)
+  return emails || []
+}
+
 /** 获取头像首字母 */
 export function getInitial(addr: string): string {
   const name = extractName(addr)

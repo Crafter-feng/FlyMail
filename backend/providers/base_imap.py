@@ -274,6 +274,8 @@ class BaseIMAPReceiver(MailReceiver):
         subject = self._decode_header(msg.get("Subject", ""))
         from_addr = self._decode_header(msg.get("From", ""))
         to_addr = self._decode_header(msg.get("To", ""))
+        cc = self._decode_header(msg.get("Cc", ""))
+        reply_to = self._decode_header(msg.get("Reply-To", ""))
         date_str = msg.get("Date", "")
 
         body_text = ""
@@ -342,6 +344,8 @@ class BaseIMAPReceiver(MailReceiver):
             subject=subject,
             from_addr=from_addr,
             to_addr=to_addr,
+            cc=cc,
+            reply_to=reply_to,
             date=self._parse_date(date_str),
             body_text=body_text,
             body_html=body_html,

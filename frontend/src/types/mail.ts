@@ -15,6 +15,9 @@ export interface Message {
   id: string
   uid?: number // IMAP UID，用于跨标签页同步等场景
   from_addr: string // 格式："发件人名 <email@domain.com>" 或纯邮箱地址
+  to_addr?: string // 收件人（逗号分隔的地址字符串）
+  cc?: string // 抄送人（逗号分隔的地址字符串，回复时用于填充抄送列表）
+  reply_to?: string // 回复地址（Reply-To 头，为空时用 from_addr）
   subject: string
   date: string
   is_read: boolean

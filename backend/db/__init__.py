@@ -190,6 +190,12 @@ async def init_db():
     except Exception as e:
         logger.debug("迁移加列已存在，忽略 accounts.sort_order: %s", e)
 
+    # cached_messages 表添加 cc 字段，存储抄送人（回复时填充抄送列表用）
+    try:
+        await db.execute("ALTER TABLE cached_messages ADD COLUMN cc TEXT DEFAULT ''")
+    except Exception as e:
+        logger.debug("迁移加列已存在，忽略 cached_messages.cc: %s", e)
+
     await db.commit()
 
 async def get_accounts(user_uid: str) -> List[Account]:
@@ -379,7 +385,7 @@ async def upsert_cached_messages(messages: List[CachedMessage]) -> int:
         cache_id = make_cached_message_id(m.account_id, m.folder, m.uid)
         rows.append(
             (cache_id, m.account_id, m.user_uid, m.uid, m.folder,
-             m.subject, m.from_addr, m.to_addr, m.date,
+             m.subject, m.from_addr, m.to_addr, m.cc or "", m.date,
              1 if m.is_read else 0, 1 if m.is_starred else 0,
              1 if m.has_attachments else 0,
              m.body_text or None, m.body_html or None, m.cached_at)
@@ -397,13 +403,14 @@ async def upsert_cached_messages(messages: List[CachedMessage]) -> int:
     )
     await db.executemany(
         """INSERT INTO cached_messages
-           (id, account_id, user_uid, uid, folder, subject, from_addr, to_addr,
+           (id, account_id, user_uid, uid, folder, subject, from_addr, to_addr, cc,
             date, is_read, is_starred, has_attachments, body_text, body_html, cached_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET
             subject = excluded.subject,
             from_addr = excluded.from_addr,
             to_addr = excluded.to_addr,
+            cc = excluded.cc,
             date = excluded.date,
             is_read = excluded.is_read,
             is_starred = excluded.is_starred,
@@ -650,7 +657,7 @@ async def get_cached_message_detail(account_id: str, uid: int, folder: str) -> O
     db = await get_db()
     cursor = await db.execute(
         """SELECT id, uid, subject, from_addr, to_addr, date, is_read, is_starred,
-                  folder, body_text, body_html, has_attachments
+                  folder, body_text, body_html, has_attachments, cc
            FROM cached_messages
            WHERE account_id = ? AND folder = ? AND uid = ?""",
         (account_id, folder, uid),
@@ -676,6 +683,7 @@ async def get_cached_message_detail(account_id: str, uid: int, folder: str) -> O
         "body_text": body_text,
         "body_html": body_html,
         "has_attachments": bool(row[11]),
+        "cc": row[12] or "",  # 抄送人（回复时填充抄送列表）
         "attachments": [],  # 缓存中不存附件列表，需要 IMAP 拉取时补充
     }
 

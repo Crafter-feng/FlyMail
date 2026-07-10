@@ -38,6 +38,8 @@ class Message(BaseModel):
     subject: str
     from_addr: str
     to_addr: str
+    cc: str = ""  # 抄送人（逗号分隔的地址字符串，回复时用于填充抄送列表）
+    reply_to: str = ""  # 回复地址（Reply-To 头，为空时前端回退到 from_addr）
     date: str
     is_read: bool = False
     is_starred: bool = False

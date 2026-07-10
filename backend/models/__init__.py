@@ -28,6 +28,7 @@ class CachedMessage(BaseModel):
     subject: str
     from_addr: str
     to_addr: str
+    cc: str = ""  # 抄送人（缓存到数据库，回复时可用）
     date: str
     is_read: bool = False
     is_starred: bool = False

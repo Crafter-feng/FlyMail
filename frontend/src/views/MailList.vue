@@ -310,7 +310,7 @@ import { useUIStore } from '../stores/ui';
 import api from '../utils/api';
 import { providerIcon } from '../utils/provider';
 import { sanitizeHtml, handleMailLinkClick } from '../utils/sanitize';
-import { extractName, getInitial, getAvatarColor, formatDate, formatDetailDate, formatFileSize, downloadAttachment as downloadAttachmentFile, getFolderCount } from '../utils/mail-helpers';
+import { extractName, extractEmails, getInitial, getAvatarColor, formatDate, formatDetailDate, formatFileSize, downloadAttachment as downloadAttachmentFile, getFolderCount } from '../utils/mail-helpers';
 import type { Attachment, Message } from '../types/mail';
 import { useWebSocket } from '../composables/useWebSocket';
 import { useSelectMode } from '../composables/useSelectMode';
@@ -856,15 +856,40 @@ function onDetailTouchEnd(e: TouchEvent) {
   }
 }
 
-/** 回复邮件：预填收件人+主题+引用原文，跳转到写邮件 */
+/** 回复邮件：预填收件人+抄送+主题+引用原文，跳转到写邮件
+ *
+ * 回复规则（标准邮件客户端行为）：
+ * - to = 原发件人（Reply-To 优先）
+ * - cc = (原收件人 + 原抄送人) - 自己 - to 中的邮箱（去重）
+ * - 当前账号是收件人或抄送人，都适用同一规则
+ */
 function replyMessage() {
   if (!selectedMessage.value) return;
   const msg = selectedMessage.value;
-  const replyTo = (msg as any).reply_to || msg.from_addr;
+
+  // 获取当前账号邮箱地址（用于排除自己，避免回复时把自己加到抄送）
+  const currentAccount = mailStore.accounts.find(a => a.id === mailStore.currentAccountId);
+  const myEmail = currentAccount?.email || '';
+
+  // 回复收件人：Reply-To 优先，否则用 From
+  const replyToAddr = msg.reply_to || msg.from_addr;
+
+  // 解析原邮件所有收件人和抄送人的邮箱地址
+  const originalRecipients = [
+    ...extractEmails(msg.to_addr || ''),
+    ...extractEmails(msg.cc || ''),
+  ];
+
+  // 抄送列表 = 原收件人+原抄送人，排除自己和回复收件人（已在 to 中），去重
+  const replyToEmails = extractEmails(replyToAddr);
+  const ccList = [...new Set(originalRecipients)]
+    .filter(email => email !== myEmail && !replyToEmails.includes(email));
+
   const subject = msg.subject?.startsWith('Re:') ? msg.subject : `Re: ${msg.subject || ''}`;
   const quoteHtml = `<br><br><blockquote style="border-left:3px solid #ccc;padding-left:10px;color:#666;">${msg.body_html || msg.body_text || ''}</blockquote>`;
   mailStore.setComposeDraft({
-    to: [replyTo],
+    to: [replyToAddr],
+    cc: ccList,
     subject,
     body_html: quoteHtml,
     in_reply_to: msg.id,
