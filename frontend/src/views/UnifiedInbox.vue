@@ -206,21 +206,21 @@
           </button>
           <button class="btn-action" @click="forwardMessage" title="转发邮件">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/>
+              <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
             </svg>
             <span>转发</span>
           </button>
-          <button class="btn-action" @click="exportPDF" :disabled="exporting" title="导出PDF">
+          <button class="btn-action" @click="printMail" :disabled="printing" title="打印">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              <polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>
             </svg>
-            <span>{{ exporting ? '导出中...' : '导出PDF' }}</span>
+            <span>{{ printing ? '打印中...' : '打印' }}</span>
           </button>
           <button class="btn-action" :class="{ confirm: deleteConfirm }" @click="onDeleteMessage" :title="deleteConfirm ? '再次点击确认删除' : '删除邮件'">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
             </svg>
-            <span v-if="deleteConfirm">确认删除</span>
+            <span>{{ deleteConfirm ? '确认删除' : '删除' }}</span>
           </button>
         </div>
       </div>
@@ -763,19 +763,20 @@ function forwardMessage() {
   window.dispatchEvent(event);
 }
 
-/** 导出当前邮件为 PDF */
-const exporting = ref(false);
-async function exportPDF() {
-  if (!selectedMessage.value || exporting.value) return;
-  exporting.value = true;
+/** 打印当前邮件（可通过打印对话框保存为PDF） */
+const printing = ref(false);
+async function printMail() {
+  if (!selectedMessage.value || printing.value) return;
+  printing.value = true;
   try {
     await exportMailToPDF(selectedMessage.value);
-    uiStore.success('PDF 导出成功');
+    // 不显示成功提示：window.print() 无法区分用户是"确认打印"还是"取消"
+    // 只有 print() 抛异常时才说明真正出错
   } catch (e: any) {
-    console.error('导出PDF失败:', e);
-    uiStore.error(e?.message || '导出失败');
+    console.error('打印失败:', e);
+    uiStore.error(e?.message || '打印失败');
   } finally {
-    exporting.value = false;
+    printing.value = false;
   }
 }
 
@@ -961,6 +962,12 @@ function downloadAttachment(att: Attachment) {
 .btn-action:hover { background: var(--bg-tertiary); color: var(--text-primary); }
 .btn-action.confirm { background: #FF3B30; color: #fff; }
 .btn-action.confirm:hover { background: #E03A22; }
+
+/* 手机端：详情页工具栏按钮只显示图标，隐藏文字（返回/回复/转发/打印/删除） */
+@media (max-width: 768px) {
+  .btn-back span,
+  .btn-action span { display: none; }
+}
 .detail-header { padding: var(--space-4) var(--space-5) var(--space-3); border-bottom: 1px solid var(--border-color); }
 .detail-subject { font-size: var(--text-xl); font-weight: var(--font-semibold); color: var(--text-primary); line-height: 1.3; margin-bottom: var(--space-3); }
 .detail-meta { display: flex; align-items: center; gap: var(--space-3); }
