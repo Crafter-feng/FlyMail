@@ -210,6 +210,12 @@
             </svg>
             <span>转发</span>
           </button>
+          <button class="btn-action" @click="exportPDF" :disabled="exporting" title="导出PDF">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            <span>{{ exporting ? '导出中...' : '导出PDF' }}</span>
+          </button>
           <button class="btn-action" :class="{ confirm: deleteConfirm }" @click="onDeleteMessage" :title="deleteConfirm ? '再次点击确认删除' : '删除邮件'">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -315,6 +321,7 @@ import api from '../utils/api';
 import { providerIcon } from '../utils/provider';
 import { sanitizeHtml, handleMailLinkClick } from '../utils/sanitize';
 import { getInitial, getAvatarColor, formatDate, formatDetailDate, formatFileSize, extractEmails, extractName, downloadAttachment as downloadAttachmentFile } from '../utils/mail-helpers';
+import { exportMailToPDF } from '../utils/export-pdf';
 import type { Attachment, Message } from '../types/mail';
 import { useWebSocket } from '../composables/useWebSocket';
 import { buildReplyDraft, buildForwardDraft } from '../composables/useReplyForward';
@@ -754,6 +761,22 @@ function forwardMessage() {
   mailStore.setComposeDraft(buildForwardDraft(msg, accountId));
   const event = new CustomEvent('flymail-navigate', { detail: 'compose' });
   window.dispatchEvent(event);
+}
+
+/** 导出当前邮件为 PDF */
+const exporting = ref(false);
+async function exportPDF() {
+  if (!selectedMessage.value || exporting.value) return;
+  exporting.value = true;
+  try {
+    await exportMailToPDF(selectedMessage.value);
+    uiStore.success('PDF 导出成功');
+  } catch (e: any) {
+    console.error('导出PDF失败:', e);
+    uiStore.error(e?.message || '导出失败');
+  } finally {
+    exporting.value = false;
+  }
 }
 
 // 悬停预取：鼠标悬停时静默预取邮件正文，点击时大概率已缓存
