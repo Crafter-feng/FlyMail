@@ -42,9 +42,6 @@ export async function exportMailToPDF(msg: Message): Promise<void> {
   // 获取净化后的正文 HTML，优先 html，缺失时回退到纯文本
   const bodyHtml = sanitizeHtml(msg.body_html) || escapeHtml(msg.body_text || '')
 
-  console.log('[export-pdf] body_html 长度:', msg.body_html?.length || 0)
-  console.log('[export-pdf] sanitizeHtml 后 bodyHtml 长度:', bodyHtml.length)
-
   // 组装完整的 HTML 文档（包含打印样式）
   const fullHtml = buildFullHtml(msg, headerHtml, bodyHtml)
 
@@ -66,21 +63,15 @@ export async function exportMailToPDF(msg: Message): Promise<void> {
     doc.write(fullHtml)
     doc.close()
 
-    console.log('[export-pdf] iframe HTML 已写入')
-
     // 等待浏览器完成布局渲染
     await waitForRender()
     // 等待 iframe 内所有图片加载完成
     await waitForImages(doc.body)
 
-    console.log('[export-pdf] 开始调用 print()')
-
     // 调用 iframe 的 print 方法，触发浏览器打印对话框
     // 用户可在对话框中选择"保存为 PDF"来导出
     iframe.contentWindow?.focus()
     iframe.contentWindow?.print()
-
-    console.log('[export-pdf] print() 已调用')
   } finally {
     // 延迟移除 iframe：打印对话框是同步阻塞的，关闭后才执行 finally
     // 但某些环境下 print() 是异步的，延迟 1 秒移除确保安全
@@ -244,8 +235,6 @@ function waitForImages(container: HTMLElement | null): Promise<void> {
   const images = Array.from(container.querySelectorAll('img'))
   if (images.length === 0) return Promise.resolve()
 
-  console.log('[export-pdf] 等待', images.length, '张图片加载')
-
   return new Promise(resolve => {
     let remaining = images.length
     const timer = setTimeout(() => {
@@ -257,7 +246,6 @@ function waitForImages(container: HTMLElement | null): Promise<void> {
       remaining--
       if (remaining <= 0) {
         clearTimeout(timer)
-        console.log('[export-pdf] 所有图片加载完成')
         resolve()
       }
     }
