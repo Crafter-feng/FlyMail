@@ -142,26 +142,24 @@
           <div v-if="selectMode" class="check-circle" :class="{ checked: selectedIds.has(msg.id + '-' + msg.account_id) }">
             <svg v-if="selectedIds.has(msg.id + '-' + msg.account_id)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
           </div>
-          <!-- 左列：头像 + 发件人 + 邮箱标签 -->
+          <!-- 左列：头像 + 发件人名称 -->
           <div class="mail-sender">
             <div class="mail-avatar" :style="{ background: getAvatarColor(msg.from_addr) }">
               {{ getInitial(msg.from_addr) }}
             </div>
-            <div class="mail-sender-info">
-              <span class="mail-from">{{ extractName(msg.from_addr) }}</span>
-              <!-- 邮箱身份标识标签（独占一行，不挤压联系人名） -->
-              <span v-if="msg.account_email" class="mail-account-tag" :class="msg.account_provider">
-                {{ msg.account_email }}
-              </span>
-            </div>
+            <span class="mail-from" :title="displayName(msg.from_addr)">{{ displayName(msg.from_addr) }}</span>
           </div>
-          <!-- 中列：状态图标 + 主题 + 附件 + 日期 -->
+          <!-- 中列：状态图标 + 主题 + 邮箱标签 + 附件 -->
           <div class="mail-info">
             <div class="mail-main-row">
               <!-- 已读/未读邮件图标 -->
               <svg v-if="!msg.is_read" class="mail-status-icon unread-icon" width="16" height="16" viewBox="0 0 24 24"><path fill="currentColor" d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
-              <svg v-else class="mail-status-icon read-icon" width="16" height="16" viewBox="0 0 1024 1024" fill="currentColor"><path d="M461.816 79.279c30.333-20.364 69.97-20.373 100.311-0.021l384.19 257.69c9.256 6.208 13.947 16.672 13.216 27.044 0.108 1.548 0.096 3.1-0.034 4.64 0.33 1.778 0.501 3.61 0.501 5.483v495.903C960 919.714 919.706 960 870 960H154c-49.706 0-90-40.286-90-89.982V374.115c0-2.663 0.347-5.245 0.999-7.704-0.004-0.803 0.025-1.608 0.086-2.412-0.804-10.432 3.883-20.985 13.191-27.234z m70.259 519.057c-11.417-10.283-28.76-10.278-40.171 0.012L157.358 900.01h709.674zM124 425.237v424.071L381.796 616.85 124 425.237z m776 0.224L642.268 616.842 900 848.964V425.461zM528.7 129.074a30.005 30.005 0 0 0-33.437 0.007L143.678 365.114l283.558 210.762 24.483-22.075c33.891-30.56 85.223-30.88 119.48-0.952l1.034 0.916 24.56 22.121 283.833-210.763z"/></svg>
+              <svg v-else class="mail-status-icon read-icon" width="16" height="16" viewBox="0 0 1024 1024" fill="currentColor"><path d="M461.816 79.279c30.333-20.364 69.97-20.373 100.311-0.021l384.19 257.69c9.256 6.208 13.947 16.672 13.216 27.044 0.108 1.548 0.096 3.1-0.034 4.64 0.33 1.778 0.501 3.61 0.501 5.483v495.903C960 919.714 919.706 960 870 960H154c-49.706 0-90-40.286-90-89.982V374.115c0-2.663 0.347-5.245 0.999-7.704-0.004-0.803 0.025-1.608 0.086-2.412-0.804-10.432 3.883-20.985 13.191-27.234z m70.259 519.057c-11.417-10.283-28.76-10.278-40.171 0.012L157.358 900.01h709.674zM124 425.237v424.071L381.796 616.85 124 425.237z m776 0.224L642.268 616.842 900 848.964V425.461zM528.7 129.074a30.005 30.005 30 0 0 0-33.437 0.007L143.678 365.114l283.558 210.762 24.483-22.075c33.891-30.56 85.223-30.88 119.48-0.952l1.034 0.916 24.56 22.121 283.833-210.763z"/></svg>
               <span class="mail-subject">{{ msg.subject || '(无主题)' }}</span>
+              <!-- 邮箱身份标识标签（主题后，完整显示） -->
+              <span v-if="msg.account_email" class="mail-account-tag" :class="msg.account_provider" :title="msg.account_email">
+                {{ msg.account_email }}
+              </span>
               <!-- 附件图标 -->
               <svg v-if="msg.has_attachments" class="att-badge" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
             </div>
@@ -200,6 +198,18 @@
           <span>返回</span>
         </button>
         <div class="detail-actions">
+          <button class="btn-action" @click="replyMessage" title="回复邮件">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>
+            </svg>
+            <span>回复</span>
+          </button>
+          <button class="btn-action" @click="forwardMessage" title="转发邮件">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/>
+            </svg>
+            <span>转发</span>
+          </button>
           <button class="btn-action" :class="{ confirm: deleteConfirm }" @click="onDeleteMessage" :title="deleteConfirm ? '再次点击确认删除' : '删除邮件'">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -219,7 +229,13 @@
             </div>
             <div class="meta-info">
               <div class="meta-from">
-                {{ selectedMessage.from_addr }}
+                <span class="from-name">{{ displayName(selectedMessage.from_addr) }}</span>
+                <span class="from-email" v-if="displayName(selectedMessage.from_addr) !== selectedMessage.from_addr">{{ selectedMessage.from_addr }}</span>
+                <button class="btn-add-contact" @click="addToContacts" title="加入联系人">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/>
+                  </svg>
+                </button>
                 <span v-if="selectedMessage.account_email" class="detail-account-tag" :class="selectedMessage.account_provider">
                   {{ selectedMessage.account_email }}
                 </span>
@@ -298,14 +314,19 @@ import { useUIStore } from '../stores/ui';
 import api from '../utils/api';
 import { providerIcon } from '../utils/provider';
 import { sanitizeHtml, handleMailLinkClick } from '../utils/sanitize';
-import { extractName, getInitial, getAvatarColor, formatDate, formatDetailDate, formatFileSize, downloadAttachment as downloadAttachmentFile } from '../utils/mail-helpers';
+import { getInitial, getAvatarColor, formatDate, formatDetailDate, formatFileSize, extractEmails, extractName, downloadAttachment as downloadAttachmentFile } from '../utils/mail-helpers';
 import type { Attachment, Message } from '../types/mail';
 import { useWebSocket } from '../composables/useWebSocket';
+import { buildReplyDraft, buildForwardDraft } from '../composables/useReplyForward';
 import { useSelectMode } from '../composables/useSelectMode';
 import { useConfirmAction } from '../composables/useConfirmAction';
+import { useContactNameMap } from '../composables/useContactNameMap';
+import { useContacts } from '../composables/useContacts';
 
 const mailStore = useMailStore();
 const uiStore = useUIStore();
+const { displayName, loadMap: loadContactMap, reloadMap: reloadContactMap } = useContactNameMap();
+const { quickAddContact } = useContacts();
 
 const messages = ref<Message[]>([]);
 const selectedMessage = ref<Message | null>(null);
@@ -390,6 +411,8 @@ function handleWsMessage(data: any) {
 onMounted(() => {
   loadUnifiedMessages();
   connectWs();
+  // 加载联系人映射表，用于邮件列表显示联系人名称
+  loadContactMap();
 });
 
 onUnmounted(() => {
@@ -678,6 +701,61 @@ function backToList() {
   selectedMessage.value = null;
 }
 
+/** 快速添加发件人到联系人列表 */
+async function addToContacts() {
+  if (!selectedMessage.value) return;
+  const fromAddr = selectedMessage.value.from_addr || '';
+  // 从 from_addr 提取邮箱地址（支持 "姓名 <邮箱>" 和纯邮箱格式）
+  const emails = extractEmails(fromAddr);
+  if (emails.length === 0) {
+    uiStore.error('无法识别发件人邮箱');
+    return;
+  }
+  const email = emails[0];
+  // 提取姓名：取尖括号前的部分，没有则用邮箱前缀
+  const name = extractName(fromAddr);
+  try {
+    await quickAddContact(name, email);
+    uiStore.success('已加入联系人');
+    // 刷新联系人映射表，让邮件列表立即显示联系人名称
+    reloadContactMap();
+  } catch (e: any) {
+    uiStore.error(e?.response?.data?.error || '添加失败');
+  }
+}
+
+/** 回复邮件：预填收件人+抄送+主题+引用原文，跳转到写邮件
+ *
+ * 角色模式规则（详见 useReplyForward.ts）：
+ * - to = 原发件人 + 原收件人 - 自己
+ * - cc = 原抄送人 - 自己
+ * - 发件账号使用邮件所在的 account_id
+ */
+function replyMessage() {
+  if (!selectedMessage.value) return;
+  const msg = selectedMessage.value;
+
+  // 聚合视图下，用邮件所属账号作为发件账号
+  const accountId = msg.account_id || mailStore.currentAccountId;
+  const currentAccount = mailStore.accounts.find(a => a.id === accountId);
+  const myEmail = currentAccount?.email || '';
+
+  mailStore.setComposeDraft(buildReplyDraft(msg, myEmail, accountId));
+  // 通过 App.vue 的 currentView 切换到 compose
+  const event = new CustomEvent('flymail-navigate', { detail: 'compose' });
+  window.dispatchEvent(event);
+}
+
+/** 转发邮件：预填主题+引用原文，收件人留空，跳转到写邮件 */
+function forwardMessage() {
+  if (!selectedMessage.value) return;
+  const msg = selectedMessage.value;
+  const accountId = msg.account_id || mailStore.currentAccountId;
+  mailStore.setComposeDraft(buildForwardDraft(msg, accountId));
+  const event = new CustomEvent('flymail-navigate', { detail: 'compose' });
+  window.dispatchEvent(event);
+}
+
 // 悬停预取：鼠标悬停时静默预取邮件正文，点击时大概率已缓存
 let _prefetchTimer: ReturnType<typeof setTimeout> | null = null;
 function prefetchMessage(msg: Message) {
@@ -793,39 +871,36 @@ function downloadAttachment(att: Attachment) {
 /* 邮件列表项 */
 .list-items { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .mail-item { display: flex; align-items: center; gap: 0; padding: 10px 16px; border: none; background: transparent; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: background var(--transition-fast); width: 100%; text-align: left; font-family: inherit; min-height: 52px; }
-/* 左列：头像 + 发件人 + 邮箱标签（固定宽度，保证各行对齐） */
-.mail-sender { display: flex; align-items: flex-start; gap: 14px; flex-shrink: 0; width: 220px; min-width: 0; padding-right: 12px; padding-top: 2px; }
-/* 发件人信息区：名字和邮箱标签上下排列 */
-.mail-sender-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+/* 左列：头像 + 发件人名称（名称有充足空间完整显示） */
+.mail-sender { display: flex; align-items: center; gap: 10px; flex-shrink: 0; width: 160px; min-width: 0; padding-right: 12px; }
 .mail-item:hover { background: var(--bg-hover); }
 .mail-item.unread .mail-from { font-weight: var(--font-semibold); color: var(--text-primary); }
 .mail-item.unread .mail-subject { color: var(--text-primary); font-weight: var(--font-medium); }
 .mail-item.selected { background: rgba(0, 122, 255, 0.1); }
 
 /* 头像 */
-.mail-avatar { width: 34px; height: 34px; border-radius: var(--border-radius-full); display: flex; align-items: center; justify-content: center; color: white; font-size: 13px; font-weight: var(--font-semibold); flex-shrink: 0; }
+.mail-avatar { width: 32px; height: 32px; border-radius: var(--border-radius-full); display: flex; align-items: center; justify-content: center; color: white; font-size: 13px; font-weight: var(--font-semibold); flex-shrink: 0; }
 .mail-info { flex: 1; min-width: 0; display: flex; align-items: center; }
 .mail-main-row { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+/* 发件人名称：完整显示，空间不足时截断 */
 .mail-from { font-size: 13px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--font-medium); flex: 1; min-width: 0; }
-.mail-subject { font-size: 13px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
-.mail-date { font-size: 11px; color: var(--text-tertiary); flex-shrink: 0; white-space: nowrap; width: 64px; text-align: right; }
+/* 主题：自适应截断，给邮箱标签让位 */
+.mail-subject { font-size: 13px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 60px; }
+.mail-date { font-size: 11px; color: var(--text-tertiary); flex-shrink: 0; white-space: nowrap; width: 70px; text-align: right; }
 /* 已读/未读标签（日期前一列，固定宽度） */
 .mail-status-tag { flex-shrink: 0; width: 42px; text-align: center; font-size: 10px; font-weight: 500; padding: 1px 0; border-radius: 4px; line-height: 1.5; white-space: nowrap; }
 .mail-status-tag.unread { background: rgba(245, 166, 35, 0.12); color: #D48806; }
 .mail-status-tag.read { background: rgba(142, 142, 147, 0.1); color: #8E8E93; }
 
-  /* 邮箱身份标识标签（独占一行，pill样式，超长省略） */
+  /* 邮箱身份标识标签（完整显示，不截断） */
 .mail-account-tag {
   font-size: 10px;
-  padding: 1px 7px;
-  border-radius: 10px;
+  padding: 1px 5px;
+  border-radius: 8px;
   font-weight: 500;
   white-space: nowrap;
   line-height: 1.5;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-  display: inline-block;
+  flex-shrink: 0;
   letter-spacing: 0.01em;
 }
 .mail-account-tag.qq { background: rgba(255, 220, 4, 0.18); color: #D4940A; }
@@ -869,6 +944,11 @@ function downloadAttachment(att: Attachment) {
 .meta-avatar { width: 36px; height: 36px; border-radius: var(--border-radius-full); display: flex; align-items: center; justify-content: center; color: white; font-size: var(--text-sm); font-weight: var(--font-semibold); flex-shrink: 0; }
 .meta-info { min-width: 0; }
 .meta-from { font-size: var(--text-sm); color: var(--text-primary); font-weight: var(--font-medium); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 6px; }
+.from-name { overflow: hidden; text-overflow: ellipsis; }
+.from-email { font-size: 12px; color: var(--text-secondary); font-weight: var(--font-normal); overflow: hidden; text-overflow: ellipsis; }
+/* 加入联系人按钮 */
+.btn-add-contact { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border: none; border-radius: 6px; background: transparent; color: var(--text-tertiary); cursor: pointer; transition: background 0.15s, color 0.15s; flex-shrink: 0; }
+.btn-add-contact:hover { background: var(--bg-hover); color: var(--color-accent); }
 .meta-date { font-size: var(--text-xs); color: var(--text-tertiary); margin-top: 2px; }
 .detail-account-tag { font-size: 10px; padding: 1px 7px; border-radius: 10px; font-weight: 500; }
 .detail-account-tag.qq { background: rgba(255, 220, 4, 0.18); color: #D4940A; }
@@ -924,7 +1004,7 @@ function downloadAttachment(att: Attachment) {
 /* 移动端适配 */
 @media (max-width: 768px) {
   /* 移动端缩小发件人列宽度，给主题更多空间 */
-  .mail-sender { width: 160px; }
+  .mail-sender { width: 120px; }
 
   /* 工具栏精简 */
   .list-toolbar { padding: 8px 12px; }

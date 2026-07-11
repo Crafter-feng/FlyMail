@@ -156,36 +156,96 @@
       <!-- 收件人 -->
       <div class="form-row">
         <label>收件人</label>
-        <div class="tag-input">
+        <div class="tag-input tag-input-with-suggest">
           <span v-for="(addr, i) in toList" :key="'to'+i" class="tag">
             {{ addr }}
             <button class="tag-remove" @click="toList.splice(i, 1)">&times;</button>
           </span>
-          <input v-model="toInput" @keydown.enter.prevent="addRecipient('to')" @keydown.comma.prevent="addRecipient('to')" placeholder="输入邮箱后回车" class="tag-input-field" />
+          <input
+            v-model="toInput"
+            @input="toField.onInput()"
+            @keydown="handleRecipientKeydown($event, 'to')"
+            @blur="blurCloseSuggestions('to')"
+            placeholder="输入姓名或邮箱"
+            class="tag-input-field"
+          />
+          <!-- 联系人建议下拉 -->
+          <div v-if="toField.showSuggestions.value" class="suggest-dropdown">
+            <div
+              v-for="(item, idx) in toField.suggestions.value"
+              :key="idx"
+              class="suggest-item"
+              :class="{ active: idx === toField.activeIndex.value }"
+              @mousedown.prevent="clickSuggestion('to', item.email)"
+            >
+              <span class="suggest-name">{{ item.name || '(未命名)' }}</span>
+              <span class="suggest-email">{{ item.email }}</span>
+            </div>
+          </div>
         </div>
       </div>
 
       <!-- 抄送（点击后显示） -->
       <div v-if="showCc" class="form-row">
         <label>抄送</label>
-        <div class="tag-input">
+        <div class="tag-input tag-input-with-suggest">
           <span v-for="(addr, i) in ccList" :key="'cc'+i" class="tag">
             {{ addr }}
             <button class="tag-remove" @click="ccList.splice(i, 1)">&times;</button>
           </span>
-          <input v-model="ccInput" @keydown.enter.prevent="addRecipient('cc')" @keydown.comma.prevent="addRecipient('cc')" placeholder="输入邮箱后回车" class="tag-input-field" />
+          <input
+            v-model="ccInput"
+            @input="ccField.onInput()"
+            @keydown="handleRecipientKeydown($event, 'cc')"
+            @blur="blurCloseSuggestions('cc')"
+            placeholder="输入姓名或邮箱"
+            class="tag-input-field"
+          />
+          <!-- 联系人建议下拉 -->
+          <div v-if="ccField.showSuggestions.value" class="suggest-dropdown">
+            <div
+              v-for="(item, idx) in ccField.suggestions.value"
+              :key="idx"
+              class="suggest-item"
+              :class="{ active: idx === ccField.activeIndex.value }"
+              @mousedown.prevent="clickSuggestion('cc', item.email)"
+            >
+              <span class="suggest-name">{{ item.name || '(未命名)' }}</span>
+              <span class="suggest-email">{{ item.email }}</span>
+            </div>
+          </div>
         </div>
       </div>
 
       <!-- 密送（点击后显示） -->
       <div v-if="showBcc" class="form-row">
         <label>密送</label>
-        <div class="tag-input">
+        <div class="tag-input tag-input-with-suggest">
           <span v-for="(addr, i) in bccList" :key="'bcc'+i" class="tag">
             {{ addr }}
             <button class="tag-remove" @click="bccList.splice(i, 1)">&times;</button>
           </span>
-          <input v-model="bccInput" @keydown.enter.prevent="addRecipient('bcc')" @keydown.comma.prevent="addRecipient('bcc')" placeholder="输入邮箱后回车" class="tag-input-field" />
+          <input
+            v-model="bccInput"
+            @input="bccField.onInput()"
+            @keydown="handleRecipientKeydown($event, 'bcc')"
+            @blur="blurCloseSuggestions('bcc')"
+            placeholder="输入姓名或邮箱"
+            class="tag-input-field"
+          />
+          <!-- 联系人建议下拉 -->
+          <div v-if="bccField.showSuggestions.value" class="suggest-dropdown">
+            <div
+              v-for="(item, idx) in bccField.suggestions.value"
+              :key="idx"
+              class="suggest-item"
+              :class="{ active: idx === bccField.activeIndex.value }"
+              @mousedown.prevent="clickSuggestion('bcc', item.email)"
+            >
+              <span class="suggest-name">{{ item.name || '(未命名)' }}</span>
+              <span class="suggest-email">{{ item.email }}</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -333,6 +393,7 @@ import { ref, computed, onMounted } from 'vue';
 import api from '../utils/api';
 import { useMailStore } from '../stores/mail';
 import TiptapEditor from '../components/TiptapEditor.vue';
+import { useContactAutocomplete } from '../composables/useContactAutocomplete';
 
 const emit = defineEmits<{
   sent: [];
@@ -355,6 +416,12 @@ const showBcc = ref(false);
 const toInput = ref('');
 const ccInput = ref('');
 const bccInput = ref('');
+
+// 联系人自动补全：为 to/cc/bcc 三个输入框各创建一个独立的状态集合
+const { createField } = useContactAutocomplete();
+const toField = createField(toInput);
+const ccField = createField(ccInput);
+const bccField = createField(bccInput);
 
 // 附件
 const attachments = ref<{ filename: string; size: number; path: string }[]>([]);
@@ -697,11 +764,12 @@ onMounted(async () => {
   loadUserSigs();
 });
 
-// 添加收件人
+// 添加收件人（支持选中建议项或直接输入邮箱）
 function addRecipient(field: 'to' | 'cc' | 'bcc') {
   const inputRef = field === 'to' ? toInput : field === 'cc' ? ccInput : bccInput;
   const listRef = field === 'to' ? toList : field === 'cc' ? ccList : bccList;
-  const email = inputRef.value.trim().replace(/,$/, '');
+  // 兼容"姓名 <邮箱>"格式：剥离尖括号外的内容
+  const email = inputRef.value.trim().replace(/,$/, '').replace(/<[^>]*>/g, '').trim();
   if (!email) return;
   // 简单邮箱格式校验
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
@@ -709,6 +777,43 @@ function addRecipient(field: 'to' | 'cc' | 'bcc') {
     listRef.value.push(email);
   }
   inputRef.value = '';
+}
+
+// 处理输入框键盘事件：优先交给自动补全处理，未处理再走原有的回车添加逻辑
+function handleRecipientKeydown(e: KeyboardEvent, field: 'to' | 'cc' | 'bcc') {
+  const fieldState = field === 'to' ? toField : field === 'cc' ? ccField : bccField;
+  const { handled, selected } = fieldState.handleKeydown(e);
+  if (handled && selected) {
+    // 选中了联系人建议项：直接用邮箱地址加入标签列表
+    const listRef = field === 'to' ? toList : field === 'cc' ? ccList : bccList;
+    if (!listRef.value.includes(selected.email)) {
+      listRef.value.push(selected.email);
+    }
+    if (field === 'to') toInput.value = '';
+    else if (field === 'cc') ccInput.value = '';
+    else bccInput.value = '';
+  } else if (!handled && e.key === 'Enter') {
+    addRecipient(field);
+  }
+}
+
+// 点击选中某个建议项
+function clickSuggestion(field: 'to' | 'cc' | 'bcc', email: string) {
+  const listRef = field === 'to' ? toList : field === 'cc' ? ccList : bccList;
+  if (!listRef.value.includes(email)) {
+    listRef.value.push(email);
+  }
+  if (field === 'to') toInput.value = '';
+  else if (field === 'cc') ccInput.value = '';
+  else bccInput.value = '';
+  const fieldState = field === 'to' ? toField : field === 'cc' ? ccField : bccField;
+  fieldState.closeSuggestions();
+}
+
+// 失焦时延迟关闭下拉（避免点击下拉项前被 blur 关闭）
+function blurCloseSuggestions(field: 'to' | 'cc' | 'bcc') {
+  const fieldState = field === 'to' ? toField : field === 'cc' ? ccField : bccField;
+  setTimeout(() => fieldState.closeSuggestions(), 150);
 }
 
 // 发送邮件
@@ -1755,6 +1860,62 @@ function formatSize(bytes: number): string {
   /* 签名编辑对话框：手机端铺满 */
   .sig-customize-modal {
     width: 90vw !important;
+  }
+}
+
+/* ==================== 联系人建议下拉 ==================== */
+.tag-input-with-suggest {
+  position: relative;
+}
+
+.suggest-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  max-height: 240px;
+  overflow-y: auto;
+  margin-top: 2px;
+}
+
+.suggest-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.suggest-item:hover,
+.suggest-item.active {
+  background: var(--bg-hover);
+}
+
+.suggest-name {
+  font-size: 13px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.suggest-email {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-left: 12px;
+}
+
+/* 移动端：建议下拉铺满 */
+@media (max-width: 768px) {
+  .suggest-dropdown {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    max-height: 200px;
   }
 }
 </style>

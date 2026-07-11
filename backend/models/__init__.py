@@ -62,3 +62,25 @@ class Signature(BaseModel):
     user_uid: str = ""         # 用户隔离字段，飞牛OS 多用户场景下区分归属
     created_at: float = 0.0    # 创建时间
     updated_at: float = 0.0    # 更新时间
+
+
+class ContactEmail(BaseModel):
+    """联系人邮箱（一个联系人可关联多个邮箱）"""
+    id: int = 0                # 自增主键
+    contact_id: int = 0        # 关联的联系人ID
+    email: str = ""            # 邮箱地址
+    is_primary: bool = False   # 是否主邮箱
+
+
+class Contact(BaseModel):
+    """联系人（按 user_uid 隔离，支持多个邮箱）"""
+    id: int = 0                # 自增主键
+    user_uid: str = ""         # 用户隔离字段
+    name: str = ""             # 显示名
+    emails: list[ContactEmail] = []  # 邮箱列表（一个联系人可多个邮箱）
+    phone: str = ""            # 联系电话
+    company: str = ""          # 工作单位
+    remark: str = ""           # 备注
+    group_name: str = ""       # 分组名
+    created_at: float = 0.0    # 创建时间
+    updated_at: float = 0.0    # 更新时间

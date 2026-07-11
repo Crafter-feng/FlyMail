@@ -38,6 +38,7 @@ from version import VERSION
 from routes.accounts import router as accounts_router
 from routes.auth import oauth_callback_app
 from routes.compose import router as compose_router
+from routes.contacts import router as contacts_router
 from routes.folders import router as folders_router
 from routes.messages import router as messages_router
 from routes.notifications import router as notifications_router
@@ -58,10 +59,13 @@ if _ui_dir_env and Path(_ui_dir_env).exists():
     UI_DIR = Path(_ui_dir_env)
 else:
     _app_dir = Path(__file__).parent
-    if (_app_dir / "ui" / "index.html").exists():
-        UI_DIR = _app_dir / "ui"
+    _candidate_dirs = [_app_dir / "ui", _app_dir.parent / "dist" / "ui"]
+    _valid_ui_dirs = [path for path in _candidate_dirs if (path / "index.html").exists()]
+    if _valid_ui_dirs:
+        UI_DIR = max(_valid_ui_dirs, key=lambda path: (path / "index.html").stat().st_mtime)
     else:
         UI_DIR = _app_dir.parent / "dist" / "ui"
+logger.info("UI_DIR selected: %s", UI_DIR)
 
 
 # ==================== 生命周期 ====================
@@ -150,6 +154,7 @@ app.add_middleware(StripPrefixMiddleware)
 
 app.include_router(accounts_router)
 app.include_router(compose_router)
+app.include_router(contacts_router)
 app.include_router(folders_router)
 app.include_router(messages_router)
 app.include_router(notifications_router)

@@ -358,3 +358,55 @@ class NotificationClearResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     error: str = Field(description="错误信息")
+
+
+# ==================== 联系人相关 ====================
+
+
+class ContactEmailItem(BaseModel):
+    """联系人邮箱项"""
+    id: int = Field(default=0, description="邮箱记录ID")
+    email: str = Field(description="邮箱地址")
+    is_primary: bool = Field(default=False, description="是否主邮箱")
+
+
+class ContactItem(BaseModel):
+    id: int = Field(description="联系人ID")
+    name: str = Field(default="", description="姓名")
+    emails: List[ContactEmailItem] = Field(default=[], description="邮箱列表（一个联系人可多个邮箱）")
+    phone: str = Field(default="", description="电话")
+    company: str = Field(default="", description="工作单位")
+    remark: str = Field(default="", description="备注")
+    group_name: str = Field(default="", description="分组")
+
+
+class ContactListResponse(BaseModel):
+    contacts: List[ContactItem] = Field(description="联系人列表")
+
+
+class ContactSearchResponse(BaseModel):
+    results: List[ContactItem] = Field(description="搜索结果（最多10条）")
+
+
+class ContactCreateRequest(BaseModel):
+    name: str = Field(default="", description="姓名")
+    emails: List[str] = Field(default=[], description="邮箱地址列表（第一个为主邮箱）")
+    phone: str = Field(default="", description="电话")
+    company: str = Field(default="", description="工作单位")
+    remark: str = Field(default="", description="备注")
+    group_name: str = Field(default="", description="分组")
+
+
+class ContactUpdateRequest(ContactCreateRequest):
+    id: int = Field(description="联系人ID")
+
+
+class QuickAddContactRequest(BaseModel):
+    name: str = Field(default="", description="姓名（从邮件发件人解析）")
+    email: str = Field(description="邮箱地址")
+
+
+class ContactStatsResponse(BaseModel):
+    """联系人往来邮件统计"""
+    count: int = Field(default=0, description="往来邮件总数")
+    last_date: str = Field(default="", description="最近一次联系时间")

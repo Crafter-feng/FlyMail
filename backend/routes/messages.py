@@ -91,6 +91,23 @@ _conn_cache: dict = {}
 _CONN_CACHE_TTL = 30  # 连接缓存有效期（秒）
 
 
+async def _check_cached_receiver_alive(receiver):
+    """Validate a cached imaplib receiver without relying on provider-level noop()."""
+    conn = getattr(receiver, "_conn", None) or getattr(receiver, "conn", None)
+    if conn is None:
+        raise ConnectionError("Cached IMAP receiver is not connected")
+
+    noop = getattr(conn, "noop", None)
+    if not callable(noop):
+        raise ConnectionError("Cached IMAP receiver does not support NOOP")
+
+    result = await asyncio.to_thread(noop)
+    if isinstance(result, (tuple, list)) and result:
+        status = str(result[0]).upper()
+        if status != "OK":
+            raise ConnectionError(f"Cached IMAP receiver NOOP failed: {result}")
+
+
 async def _get_cached_receiver(account, credentials):
     """获取缓存的 receiver 连接，或创建新连接"""
     import time
@@ -100,7 +117,7 @@ async def _get_cached_receiver(account, credentials):
         receiver = cached["receiver"]
         # 验证连接是否仍可用
         try:
-            await receiver.noop()
+            await _check_cached_receiver_alive(receiver)
             cached["ts"] = time.time()
             return receiver
         except Exception:

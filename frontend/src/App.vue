@@ -103,6 +103,7 @@
           <MailList v-else-if="currentView === 'mail'" />
           <ComposeEmail v-else-if="currentView === 'compose'" @sent="onMailSent" @discard="onMailDiscard" />
           <AccountList v-else-if="currentView === 'accounts'" />
+          <ContactList v-else-if="currentView === 'contacts'" />
           <Settings v-else-if="currentView === 'settings'" />
           <About v-else-if="currentView === 'about'" />
         </transition>
@@ -140,6 +141,10 @@
           <button class="other-menu-item" @click="currentView = 'compose'; showOtherMenu = false">
             <span class="other-menu-icon" v-html="mobileNavIcons.compose"></span>
             <span>写信</span>
+          </button>
+          <button class="other-menu-item" @click="currentView = 'contacts'; showOtherMenu = false">
+            <span class="other-menu-icon" v-html="mobileNavIcons.contacts"></span>
+            <span>联系人</span>
           </button>
           <button class="other-menu-item" @click="currentView = 'settings'; showOtherMenu = false">
             <span class="other-menu-icon" v-html="mobileNavIcons.settings"></span>
@@ -269,6 +274,7 @@ import AccountList from './views/AccountList.vue';
 import Settings from './views/Settings.vue';
 import About from './views/About.vue';
 import ComposeEmail from './views/ComposeEmail.vue';
+import ContactList from './views/ContactList.vue';
 
 const mailStore = useMailStore();
 const uiStore = useUIStore();
@@ -281,7 +287,7 @@ const showNotificationPanel = ref(false);
 // 移动端"其他"菜单弹出控制
 const showOtherMenu = ref(false);
 // "其他"菜单激活状态：当前视图为写信/设置/关于时高亮
-const isOtherActive = computed(() => ['compose', 'settings', 'about'].includes(currentView.value));
+const isOtherActive = computed(() => ['compose', 'contacts', 'settings', 'about'].includes(currentView.value));
 
 // 移动端底部导航图标（独立于桌面端 navItems，避免耦合）
 const mobileNavIcons = {
@@ -292,6 +298,7 @@ const mobileNavIcons = {
   compose: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>',
   settings: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
   about: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+  contacts: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
 };
 
 const { connect: connectGlobalWs, disconnect: disconnectGlobalWs } = useWebSocket(handleGlobalWsMessage);
@@ -394,6 +401,12 @@ const navItems = [
     label: '账号',
     shortLabel: '账号',
     icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+  },
+  {
+    key: 'contacts',
+    label: '联系人',
+    shortLabel: '联系人',
+    icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
   },
   {
     key: 'settings',

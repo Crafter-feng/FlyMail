@@ -180,7 +180,7 @@
             <div class="mail-avatar" :style="{ background: getAvatarColor(msg.from_addr) }">
               {{ getInitial(msg.from_addr) }}
             </div>
-            <span class="mail-from">{{ extractName(msg.from_addr) }}</span>
+            <span class="mail-from">{{ displayName(msg.from_addr) }}</span>
           </div>
           <!-- 中列：状态图标 + 主题 + 附件 + 日期 -->
           <div class="mail-info">
@@ -259,7 +259,15 @@
               {{ getInitial(selectedMessage.from_addr) }}
             </div>
             <div class="meta-info">
-              <div class="meta-from">{{ selectedMessage.from_addr }}</div>
+              <div class="meta-from">
+                <span class="from-name">{{ displayName(selectedMessage.from_addr) }}</span>
+                <span class="from-email" v-if="displayName(selectedMessage.from_addr) !== selectedMessage.from_addr">{{ selectedMessage.from_addr }}</span>
+                <button class="btn-add-contact" @click="addToContacts" title="加入联系人">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/>
+                  </svg>
+                </button>
+              </div>
               <div class="meta-date">{{ formatDetailDate(selectedMessage.date) }}</div>
             </div>
           </div>
@@ -313,11 +321,16 @@ import { sanitizeHtml, handleMailLinkClick } from '../utils/sanitize';
 import { extractName, extractEmails, getInitial, getAvatarColor, formatDate, formatDetailDate, formatFileSize, downloadAttachment as downloadAttachmentFile, getFolderCount } from '../utils/mail-helpers';
 import type { Attachment, Message } from '../types/mail';
 import { useWebSocket } from '../composables/useWebSocket';
+import { buildReplyDraft, buildForwardDraft } from '../composables/useReplyForward';
 import { useSelectMode } from '../composables/useSelectMode';
 import { useConfirmAction } from '../composables/useConfirmAction';
+import { useContacts } from '../composables/useContacts';
+import { useContactNameMap } from '../composables/useContactNameMap';
 
 const mailStore = useMailStore();
 const uiStore = useUIStore();
+const { quickAddContact } = useContacts();
+const { displayName, loadMap: loadContactMap, reloadMap: reloadContactMap } = useContactNameMap();
 
 const messages = ref<Message[]>([]);
 const selectedMessage = ref<Message | null>(null);
@@ -607,6 +620,8 @@ watch(
 onMounted(() => {
   loadMessages();
   connectWs();
+  // 加载联系人映射表，用于邮件列表显示联系人名称
+  loadContactMap();
 });
 
 onUnmounted(() => {
@@ -856,45 +871,48 @@ function onDetailTouchEnd(e: TouchEvent) {
   }
 }
 
+/**
+ * 快速添加发件人到联系人（邮件详情页用）
+ * 从 from_addr 提取姓名和邮箱，调用后端 quick-add 接口
+ * 已存在的邮箱会静默返回，不重复创建
+ */
+async function addToContacts() {
+  if (!selectedMessage.value) return;
+  const fromAddr = selectedMessage.value.from_addr || '';
+  // 从 from_addr 提取邮箱地址（支持 "姓名 <邮箱>" 和纯邮箱格式）
+  const emails = extractEmails(fromAddr);
+  if (emails.length === 0) {
+    uiStore.error('无法识别发件人邮箱');
+    return;
+  }
+  const email = emails[0];
+  // 提取姓名：取尖括号前的部分，没有则用邮箱前缀
+  const name = extractName(fromAddr);
+  try {
+    await quickAddContact(name, email);
+    uiStore.success('已加入联系人');
+    // 刷新联系人映射表，让邮件列表立即显示联系人名称
+    reloadContactMap();
+  } catch (e: any) {
+    uiStore.error(e?.response?.data?.error || '添加失败');
+  }
+}
+
 /** 回复邮件：预填收件人+抄送+主题+引用原文，跳转到写邮件
  *
- * 回复规则（标准邮件客户端行为）：
- * - to = 原发件人（Reply-To 优先）
- * - cc = (原收件人 + 原抄送人) - 自己 - to 中的邮箱（去重）
- * - 当前账号是收件人或抄送人，都适用同一规则
+ * 角色模式规则（详见 useReplyForward.ts）：
+ * - to = 原发件人 + 原收件人 - 自己
+ * - cc = 原抄送人 - 自己
  */
 function replyMessage() {
   if (!selectedMessage.value) return;
   const msg = selectedMessage.value;
 
-  // 获取当前账号邮箱地址（用于排除自己，避免回复时把自己加到抄送）
+  // 获取当前账号邮箱地址（用于排除自己）
   const currentAccount = mailStore.accounts.find(a => a.id === mailStore.currentAccountId);
   const myEmail = currentAccount?.email || '';
 
-  // 回复收件人：Reply-To 优先，否则用 From
-  const replyToAddr = msg.reply_to || msg.from_addr;
-
-  // 解析原邮件所有收件人和抄送人的邮箱地址
-  const originalRecipients = [
-    ...extractEmails(msg.to_addr || ''),
-    ...extractEmails(msg.cc || ''),
-  ];
-
-  // 抄送列表 = 原收件人+原抄送人，排除自己和回复收件人（已在 to 中），去重
-  const replyToEmails = extractEmails(replyToAddr);
-  const ccList = [...new Set(originalRecipients)]
-    .filter(email => email !== myEmail && !replyToEmails.includes(email));
-
-  const subject = msg.subject?.startsWith('Re:') ? msg.subject : `Re: ${msg.subject || ''}`;
-  const quoteHtml = `<br><br><blockquote style="border-left:3px solid #ccc;padding-left:10px;color:#666;">${msg.body_html || msg.body_text || ''}</blockquote>`;
-  mailStore.setComposeDraft({
-    to: [replyToAddr],
-    cc: ccList,
-    subject,
-    body_html: quoteHtml,
-    in_reply_to: msg.id,
-    account_id: mailStore.currentAccountId,
-  });
+  mailStore.setComposeDraft(buildReplyDraft(msg, myEmail, mailStore.currentAccountId));
   // 通过 App.vue 的 currentView 切换到 compose
   const event = new CustomEvent('flymail-navigate', { detail: 'compose' });
   window.dispatchEvent(event);
@@ -904,14 +922,7 @@ function replyMessage() {
 function forwardMessage() {
   if (!selectedMessage.value) return;
   const msg = selectedMessage.value;
-  const subject = msg.subject?.startsWith('Fwd:') ? msg.subject : `Fwd: ${msg.subject || ''}`;
-  const fwdHtml = `<br><br><p>---------- 转发的邮件 ----------</p><p>发件人: ${msg.from_addr}</p><p>主题: ${msg.subject}</p><p>日期: ${msg.date}</p><hr/><div>${msg.body_html || msg.body_text || ''}</div>`;
-  mailStore.setComposeDraft({
-    to: [],
-    subject,
-    body_html: fwdHtml,
-    account_id: mailStore.currentAccountId,
-  });
+  mailStore.setComposeDraft(buildForwardDraft(msg, mailStore.currentAccountId));
   const event = new CustomEvent('flymail-navigate', { detail: 'compose' });
   window.dispatchEvent(event);
 }
@@ -1692,6 +1703,45 @@ function downloadAttachment(att: Attachment) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 发件人名称（联系人名或原始姓名） */
+.from-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 发件人邮箱地址（当与名称不同时显示） */
+.from-email {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: var(--font-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 加入联系人按钮 */
+.btn-add-contact {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.btn-add-contact:hover {
+  background: var(--bg-hover);
+  color: var(--accent-blue);
 }
 
 .meta-date {

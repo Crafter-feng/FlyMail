@@ -196,6 +196,44 @@ async def init_db():
     except Exception as e:
         logger.debug("迁移加列已存在，忽略 cached_messages.cc: %s", e)
 
+    # 联系人表：存储联系人基本信息（不含邮箱，邮箱在 contact_emails 子表）
+    # CREATE IF NOT EXISTS 保证不丢数据；ALTER TABLE 补列保证字段完整
+    await db.execute("""
+            CREATE TABLE IF NOT EXISTS contacts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_uid TEXT NOT NULL,
+                name TEXT DEFAULT '',
+                phone TEXT DEFAULT '',
+                company TEXT DEFAULT '',
+                remark TEXT DEFAULT '',
+                group_name TEXT DEFAULT '',
+                created_at REAL DEFAULT 0,
+                updated_at REAL DEFAULT 0
+            )
+        """)
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_contacts_user ON contacts(user_uid)")
+
+    # 联系人邮箱子表：一个联系人可关联多个邮箱
+    await db.execute("""
+            CREATE TABLE IF NOT EXISTS contact_emails (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                contact_id INTEGER NOT NULL,
+                email TEXT NOT NULL,
+                is_primary INTEGER DEFAULT 0,
+                created_at REAL DEFAULT 0,
+                FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE,
+                UNIQUE(contact_id, email)
+            )
+        """)
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_contact_emails_contact ON contact_emails(contact_id)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_contact_emails_email ON contact_emails(email)")
+
+    # 补充 company 字段（旧表无此列时自动添加，已有则忽略）
+    try:
+        await db.execute("ALTER TABLE contacts ADD COLUMN company TEXT DEFAULT ''")
+    except Exception as e:
+        logger.debug("迁移加列已存在，忽略 contacts.company: %s", e)
+
     await db.commit()
 
 async def get_accounts(user_uid: str) -> List[Account]:
@@ -1214,3 +1252,183 @@ async def set_user_settings(user_uid: str, settings: dict) -> None:
             (user_uid, key, value_json, now),
         )
     await db.commit()
+
+
+# ==================== 联系人 CRUD ====================
+
+
+async def _fetch_emails_for_contacts(db, contact_ids: list[int]) -> dict:
+    """批量获取多个联系人的邮箱列表，返回 { contact_id: [{id, email, is_primary}] }"""
+    if not contact_ids:
+        return {}
+    placeholders = ",".join("?" * len(contact_ids))
+    cursor = await db.execute(
+        f"SELECT id, contact_id, email, is_primary FROM contact_emails "
+        f"WHERE contact_id IN ({placeholders}) ORDER BY is_primary DESC, id ASC",
+        contact_ids,
+    )
+    rows = await cursor.fetchall()
+    result: dict[int, list] = {}
+    for row in rows:
+        cid = row[1]
+        if cid not in result:
+            result[cid] = []
+        result[cid].append({"id": row[0], "email": row[2], "is_primary": bool(row[3])})
+    return result
+
+
+async def get_contacts(user_uid: str, search: str = "") -> list:
+    """获取联系人列表，支持按姓名/邮箱模糊搜索。每个联系人含 emails 数组。"""
+    db = await get_db()
+    if search:
+        like = f"%{search}%"
+        # JOIN contact_emails 匹配姓名或邮箱
+        cursor = await db.execute(
+            """SELECT DISTINCT c.* FROM contacts c
+               LEFT JOIN contact_emails ce ON ce.contact_id = c.id
+               WHERE c.user_uid = ? AND (c.name LIKE ? OR ce.email LIKE ?)
+               ORDER BY c.name ASC, c.id ASC""",
+            (user_uid, like, like),
+        )
+    else:
+        cursor = await db.execute(
+            "SELECT * FROM contacts WHERE user_uid = ? ORDER BY name ASC, id ASC",
+            (user_uid,),
+        )
+    rows = await cursor.fetchall()
+    columns = [d[0] for d in cursor.description]
+    contacts = [dict(zip(columns, row)) for row in rows]
+    # 批量获取邮箱
+    emails_map = await _fetch_emails_for_contacts(db, [c["id"] for c in contacts])
+    for c in contacts:
+        c["emails"] = emails_map.get(c["id"], [])
+    return contacts
+
+
+async def get_contact_by_id(contact_id: int, user_uid: str) -> Optional[dict]:
+    """按 ID 获取单个联系人（含邮箱列表），传入 user_uid 校验归属。"""
+    db = await get_db()
+    cursor = await db.execute(
+        "SELECT * FROM contacts WHERE id = ? AND user_uid = ?",
+        (contact_id, user_uid),
+    )
+    row = await cursor.fetchone()
+    if not row:
+        return None
+    columns = [d[0] for d in cursor.description]
+    contact = dict(zip(columns, row))
+    emails_map = await _fetch_emails_for_contacts(db, [contact_id])
+    contact["emails"] = emails_map.get(contact_id, [])
+    return contact
+
+
+async def create_contact(user_uid: str, name: str, emails: list[str], phone: str = "", company: str = "", remark: str = "", group_name: str = "") -> dict:
+    """新增联系人（含多个邮箱），返回完整记录。第一个邮箱标记为主邮箱。"""
+    db = await get_db()
+    now = time.time()
+    cursor = await db.execute(
+        """INSERT INTO contacts (user_uid, name, phone, company, remark, group_name, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (user_uid, name, phone, company, remark, group_name, now, now),
+    )
+    contact_id = cursor.lastrowid
+    # 插入邮箱（去空、去重）
+    email_list = []
+    seen = set()
+    for i, email in enumerate(emails):
+        e = email.strip()
+        if not e or e in seen:
+            continue
+        seen.add(e)
+        is_primary = 1 if i == 0 else 0
+        ec = await db.execute(
+            "INSERT INTO contact_emails (contact_id, email, is_primary, created_at) VALUES (?, ?, ?, ?)",
+            (contact_id, e, is_primary, now),
+        )
+        email_list.append({"id": ec.lastrowid, "email": e, "is_primary": bool(is_primary)})
+    await db.commit()
+    return {"id": contact_id, "user_uid": user_uid, "name": name, "phone": phone,
+            "company": company, "remark": remark, "group_name": group_name,
+            "created_at": now, "updated_at": now, "emails": email_list}
+
+
+async def update_contact(contact_id: int, user_uid: str, name: str, emails: list[str], phone: str = "", company: str = "", remark: str = "", group_name: str = "") -> bool:
+    """更新联系人基本信息和邮箱列表。传入 user_uid 校验归属。"""
+    db = await get_db()
+    cursor = await db.execute(
+        """UPDATE contacts SET name = ?, phone = ?, company = ?, remark = ?, group_name = ?, updated_at = ?
+           WHERE id = ? AND user_uid = ?""",
+        (name, phone, company, remark, group_name, time.time(), contact_id, user_uid),
+    )
+    if cursor.rowcount == 0:
+        return False
+    # 邮箱全量更新：先删旧的后插新的
+    await db.execute("DELETE FROM contact_emails WHERE contact_id = ?", (contact_id,))
+    now = time.time()
+    seen = set()
+    for i, email in enumerate(emails):
+        e = email.strip()
+        if not e or e in seen:
+            continue
+        seen.add(e)
+        is_primary = 1 if i == 0 else 0
+        await db.execute(
+            "INSERT INTO contact_emails (contact_id, email, is_primary, created_at) VALUES (?, ?, ?, ?)",
+            (contact_id, e, is_primary, now),
+        )
+    await db.commit()
+    return True
+
+
+async def delete_contact(contact_id: int, user_uid: str) -> bool:
+    """删除联系人（含邮箱），返回是否成功。传入 user_uid 校验归属。"""
+    db = await get_db()
+    # 先删子表邮箱（SQLite 默认未开启外键级联）
+    await db.execute("DELETE FROM contact_emails WHERE contact_id = ?", (contact_id,))
+    cursor = await db.execute(
+        "DELETE FROM contacts WHERE id = ? AND user_uid = ?",
+        (contact_id, user_uid),
+    )
+    await db.commit()
+    return cursor.rowcount > 0
+
+
+async def upsert_contact_by_email(user_uid: str, name: str, email: str) -> tuple[dict, bool]:
+    """按邮箱去重添加联系人（邮件详情快速添加用）。
+
+    返回 (联系人记录, 是否新建)。邮箱已存在时返回 (已有记录, False)，
+    不存在则创建并返回 (新记录, True)。
+    """
+    db = await get_db()
+    # 查 contact_emails 是否已有该邮箱
+    cursor = await db.execute(
+        """SELECT c.* FROM contacts c
+           JOIN contact_emails ce ON ce.contact_id = c.id
+           WHERE c.user_uid = ? AND ce.email = ?""",
+        (user_uid, email),
+    )
+    row = await cursor.fetchone()
+    if row:
+        columns = [d[0] for d in cursor.description]
+        contact = dict(zip(columns, row))
+        emails_map = await _fetch_emails_for_contacts(db, [contact["id"]])
+        contact["emails"] = emails_map.get(contact["id"], [])
+        return (contact, False)
+    # 不存在则创建新联系人
+    return (await create_contact(user_uid, name, [email]), True)
+
+
+async def get_contact_stats(user_uid: str, email: str) -> dict:
+    """统计与某邮箱地址的往来邮件数量和最近联系时间。"""
+    db = await get_db()
+    like = f"%{email}%"
+    cursor = await db.execute(
+        """SELECT COUNT(*) as count, MAX(date) as last_date
+           FROM cached_messages
+           WHERE user_uid = ? AND (from_addr LIKE ? OR to_addr LIKE ?)""",
+        (user_uid, like, like),
+    )
+    row = await cursor.fetchone()
+    if row and row[0] > 0:
+        return {"count": row[0], "last_date": row[1] or ""}
+    return {"count": 0, "last_date": ""}
