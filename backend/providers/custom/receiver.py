@@ -43,7 +43,12 @@ def _decode_modified_utf7(value: str) -> str:
 
 
 def _classify_core_folder(folder_name: str, flags: list[str]) -> str:
-    """Return the unified display name for a core folder, or an empty string."""
+    """识别核心文件夹，返回统一的中文显示名；无法识别时返回空字符串。
+
+    识别优先级：
+    1. IMAP 特殊标志（\\Sent \\Drafts \\Junk \\Trash）— 最可靠
+    2. 文件夹名关键词匹配（英文/中文，支持多种变体）
+    """
     flag_set = set(flags)
     if "\\Sent" in flag_set:
         return "已发送"
@@ -58,13 +63,17 @@ def _classify_core_folder(folder_name: str, flags: list[str]) -> str:
     lowered = decoded.lower()
     if lowered == "inbox":
         return "收件箱"
-    if lowered in {"sent", "sent messages", "sent items"} or decoded in {"已发送", "已发送邮件", "发件箱"}:
+    # 已发送：兼容 outbox（发件箱）、多种英文变体和中文别名
+    if lowered in {"sent", "sent messages", "sent items", "outbox"} or decoded in {"已发送", "已发送邮件", "发件箱"}:
         return "已发送"
-    if lowered in {"draft", "drafts"} or decoded == "草稿箱":
+    # 草稿箱：增加 "draft messages" 和 "草稿"
+    if lowered in {"draft", "drafts", "draft messages"} or decoded in {"草稿箱", "草稿"}:
         return "草稿箱"
-    if lowered in {"junk", "spam", "junk email"} or decoded in {"垃圾邮件", "垃圾箱"}:
+    # 垃圾邮件：增加 "bulk"、"bulk mail" 和 "垃圾箱"
+    if lowered in {"junk", "spam", "junk email", "bulk", "bulk mail"} or decoded in {"垃圾邮件", "垃圾箱"}:
         return "垃圾邮件"
-    if lowered in {"trash", "deleted", "deleted items", "deleted messages"} or decoded in {"已删除", "已删除邮件", "删除邮件"}:
+    # 已删除：增加 "bin" 和 "删除"
+    if lowered in {"trash", "deleted", "deleted items", "deleted messages", "bin"} or decoded in {"已删除", "已删除邮件", "删除邮件", "删除"}:
         return "已删除"
     return ""
 
@@ -197,7 +206,12 @@ class CustomReceiver(BaseIMAPReceiver):
         return await asyncio.to_thread(self._fetch_folders_sync)
 
     def _fetch_folders_sync(self) -> list:
-        """同步获取文件夹列表（在线程池中运行）"""
+        """同步获取文件夹列表（在线程池中运行）
+
+        识别核心文件夹（收件箱/已发送/草稿箱/垃圾邮件/已删除），
+        同时显示其他非核心、非子文件夹（用解码后的名称作为显示名）。
+        参考 QQ receiver 逻辑：未识别的文件夹也展示给用户，避免只显示收件箱。
+        """
         status, folder_list = self._conn.list()
         if status != "OK":
             return []
@@ -221,8 +235,14 @@ class CustomReceiver(BaseIMAPReceiver):
             flags = flags_part.split()
             folder_infos.append((flags, folder_name))
 
+        # 第一步：识别核心文件夹（保持原有顺序：收件箱 → 已发送 → 草稿箱 → 垃圾邮件 → 已删除）
         result = [Folder(name="收件箱", path="INBOX", unread_count=0, total_count=0)]
-        added = {"收件箱"}
+        # 跟踪已添加的 IMAP 路径（而非显示名），避免同名文件夹被误判
+        # IMAP 协议规定 INBOX 不区分大小写，服务器可能返回 "Inbox"/"INBOX" 等变体
+        added_paths = {"INBOX"}
+        for flags, folder_name in folder_infos:
+            if _classify_core_folder(folder_name, flags) == "收件箱" and folder_name not in added_paths:
+                added_paths.add(folder_name)
         ordered_names = ["已发送", "草稿箱", "垃圾邮件", "已删除"]
         classified = [
             (_classify_core_folder(folder_name, flags), folder_name)
@@ -231,10 +251,27 @@ class CustomReceiver(BaseIMAPReceiver):
 
         for display_name in ordered_names:
             for name, folder_name in classified:
-                if name == display_name and display_name not in added:
+                if name == display_name and folder_name not in added_paths:
                     result.append(Folder(name=display_name, path=folder_name, unread_count=0, total_count=0))
-                    added.add(display_name)
+                    added_paths.add(folder_name)
                     break
+
+        # 第二步：添加其他非核心、非子文件夹（参考 QQ receiver 逻辑）
+        # 确保未识别的文件夹也能显示，避免只显示收件箱
+        for flags, folder_name in folder_infos:
+            # 跳过已添加的核心文件夹
+            if folder_name in added_paths:
+                continue
+            # 跳过子文件夹（包含分隔符 / 或 \，如 "INBOX/Sent" 或 "INBOX.Sent"）
+            if "/" in folder_name or "\\" in folder_name:
+                continue
+            # 跳过特殊系统文件夹（以 [ 开头，如 "[Gmail]/..."）
+            if folder_name.startswith("["):
+                continue
+            # 用解码后的名称作为显示名（Modified UTF-7 解码中文文件夹名）
+            display_name = _decode_modified_utf7(folder_name).strip() or folder_name
+            result.append(Folder(name=display_name, path=folder_name, unread_count=0, total_count=0))
+            added_paths.add(folder_name)
 
         return result
 

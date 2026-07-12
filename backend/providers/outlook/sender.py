@@ -9,7 +9,7 @@ from email import encoders
 from email.mime.base import MIMEBase
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from email.utils import formatdate
+from email.utils import formatdate, make_msgid
 from ..base import MailSender, Credentials, SendResult
 from ..ipv4 import IPv4SMTP
 from .config import OUTLOOK_SMTP_HOST, OUTLOOK_SMTP_PORT
@@ -86,6 +86,8 @@ class OutlookSender(MailSender):
             msg["Cc"] = ", ".join(cc) if isinstance(cc, list) else cc
         msg["Subject"] = subject
         msg["Date"] = formatdate(localtime=True)
+        # Message-ID 是邮件标准头，缺少会导致部分邮箱判定为垃圾邮件
+        msg["Message-ID"] = make_msgid(idstring=from_email)
         if in_reply_to:
             msg["In-Reply-To"] = in_reply_to
             msg["References"] = in_reply_to

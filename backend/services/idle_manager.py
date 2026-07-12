@@ -636,10 +636,14 @@ class PollConnection:
                     return "expunge"
                 self._folder_counts[folder] = current_count
                 last_count = current_count
-                # 保持连接活跃
-                await self.client.noop()
+                # 保持连接活跃，设置 10 秒超时避免连接断开时长时间卡住
+                await asyncio.wait_for(self.client.noop(), timeout=10)
             except ConnectionError:
                 raise
+            except asyncio.TimeoutError:
+                # NOOP/STATUS 超时：连接已断开，抛出异常触发重连
+                logger.warning("轮询超时: folder=%s，连接可能已断开", folder)
+                raise ConnectionError("轮询超时，连接已断开") from None
             except Exception as e:
                 logger.warning("轮询异常: %s", e)
                 raise ConnectionError(f"轮询异常: {e}") from e
@@ -647,7 +651,11 @@ class PollConnection:
         return "timeout"
 
     async def _get_folder_count(self, folder: str) -> int:
-        """使用 aioimaplib 的 STATUS 命令获取邮件数量"""
+        """使用 aioimaplib 的 STATUS 命令获取邮件数量
+
+        为 STATUS 命令设置 10 秒超时（比 socket 默认 30 秒更短），
+        连接断开后能更快发现并触发重连，减少用户看到的超时警告数量。
+        """
         import re as _re
         # 快速失败：连接已断开时直接返回 -1，不再尝试 STATUS 命令
         # 关键修复：iCloud 有 5 个文件夹并行 Poll，当第一个文件夹发现连接断开并设置
@@ -658,10 +666,11 @@ class PollConnection:
         try:
             # 文件夹名包含空格时需要加引号（如 "Sent Messages"）
             quoted_folder = f'"{folder}"' if ' ' in folder else folder
-            response = await self.client.status(quoted_folder, '(MESSAGES)')
-            logger.debug("STATUS 响应: folder=%s, result=%s, lines=%s", folder,
-                        response.result if response else None,
-                        [l.decode('utf-8', errors='ignore') if isinstance(l, bytes) else str(l) for l in (response.lines or [])])
+            # 10 秒超时：连接断开时快速失败，避免等待 socket 默认 30 秒超时
+            response = await asyncio.wait_for(
+                self.client.status(quoted_folder, '(MESSAGES)'),
+                timeout=10,
+            )
             if response and response.lines:
                 for line in response.lines:
                     line_str = line.decode('utf-8', errors='ignore') if isinstance(line, bytes) else str(line)
@@ -669,6 +678,11 @@ class PollConnection:
                     if match:
                         return int(match.group(1))
             logger.warning("STATUS 未解析到 MESSAGES: folder=%s, result=%s", folder, response.result if response else None)
+            return -1
+        except asyncio.TimeoutError:
+            # 超时说明连接已断开，标记并返回 -1 触发重连
+            logger.warning("STATUS 命令超时(10s): folder=%s，连接可能已断开", folder)
+            self.connected = False
             return -1
         except Exception as e:
             logger.warning("STATUS 命令失败: folder=%s, error=%r", folder, e)

@@ -1042,23 +1042,6 @@ class MailSyncService:
         """
         return [name_map.get(f, f) for f in folders]
 
-    async def _get_idle_folders_from_config(self, account) -> list:
-        """获取监听文件夹列表（不需要 receiver 连接）
-
-        各 Provider 的标准文件夹路径：
-        - Gmail: 使用标签系统，IMAP 路径为 [Gmail]/xxx
-        - Outlook: Sent Items, Drafts, Junk Email, Deleted Items
-        - QQ: Sent Messages, Drafts, Junk, Deleted Messages
-        - iCloud: Sent Messages, Drafts, Junk, Deleted Messages
-        """
-        folder_map = {
-            "gmail": ["INBOX", "[Gmail]/Sent Mail", "[Gmail]/Drafts", "[Gmail]/Spam", "[Gmail]/Trash"],
-            "outlook": ["INBOX", "Sent", "Sent Items", "Drafts", "Junk", "Junk Email", "Deleted", "Deleted Items"],
-            "qq": ["INBOX", "Sent Messages", "Drafts", "Junk", "Deleted Messages"],
-            "icloud": ["INBOX", "Sent Messages", "Drafts", "Junk", "Deleted Messages"],
-        }
-        return folder_map.get(account.provider, ["INBOX"])
-
     async def _check_receiver_alive(self, receiver):
         """检查 IMAP 连接是否仍可用；不可用时抛异常，让外层循环重连。
 
