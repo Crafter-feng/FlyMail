@@ -44,3 +44,7 @@ Thumbs.db
 
 # 日志
 *.log
+
+# 运行时数据库文件（不应纳入版本控制）
+*.db
+*.db-journal
