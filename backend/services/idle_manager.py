@@ -642,10 +642,12 @@ class PollConnection:
                 raise
             except asyncio.TimeoutError:
                 # NOOP/STATUS 超时：连接已断开，抛出异常触发重连
-                logger.warning("轮询超时: folder=%s，连接可能已断开", folder)
+                # 降级为 DEBUG：连接断开是 IMAP 正常现象，重连机制会自动恢复，
+                # 由 sync.py 层输出一条简洁的 INFO 日志即可
+                logger.debug("轮询超时: folder=%s，连接可能已断开", folder)
                 raise ConnectionError("轮询超时，连接已断开") from None
             except Exception as e:
-                logger.warning("轮询异常: %s", e)
+                logger.debug("轮询异常: %s", e)
                 raise ConnectionError(f"轮询异常: {e}") from e
 
         return "timeout"
@@ -654,13 +656,17 @@ class PollConnection:
         """使用 aioimaplib 的 STATUS 命令获取邮件数量
 
         为 STATUS 命令设置 10 秒超时（比 socket 默认 30 秒更短），
-        连接断开后能更快发现并触发重连，减少用户看到的超时警告数量。
+        连接断开后能更快发现并触发重连。
+
+        日志策略：STATUS 超时/失败降级为 DEBUG，因为这是预期的瞬态错误
+        （IMAP 服务器定期断开连接、网络波动等），重连机制会自动恢复。
+        由 sync.py 层在所有连接断开时输出一条简洁的 INFO 日志。
         """
         import re as _re
         # 快速失败：连接已断开时直接返回 -1，不再尝试 STATUS 命令
         # 关键修复：iCloud 有 5 个文件夹并行 Poll，当第一个文件夹发现连接断开并设置
         # self.connected=False 后，其他文件夹的并发任务下次调用本方法时若不检查 self.connected，
-        # 会继续尝试 self.client.status()，导致连续 5 次 "STATUS 命令失败" 警告日志
+        # 会继续尝试 self.client.status()，导致连续 5 次 STATUS 失败日志
         if not self.connected or not self.client:
             return -1
         try:
@@ -677,15 +683,15 @@ class PollConnection:
                     match = _re.search(r'MESSAGES\s+(\d+)', line_str)
                     if match:
                         return int(match.group(1))
-            logger.warning("STATUS 未解析到 MESSAGES: folder=%s, result=%s", folder, response.result if response else None)
+            logger.debug("STATUS 未解析到 MESSAGES: folder=%s, result=%s", folder, response.result if response else None)
             return -1
         except asyncio.TimeoutError:
             # 超时说明连接已断开，标记并返回 -1 触发重连
-            logger.warning("STATUS 命令超时(10s): folder=%s，连接可能已断开", folder)
+            logger.debug("STATUS 命令超时(10s): folder=%s，连接可能已断开", folder)
             self.connected = False
             return -1
         except Exception as e:
-            logger.warning("STATUS 命令失败: folder=%s, error=%r", folder, e)
+            logger.debug("STATUS 命令失败: folder=%s, error=%r", folder, e)
             self.connected = False
             return -1
 

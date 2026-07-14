@@ -193,7 +193,8 @@ class SinaReceiver(BaseIMAPReceiver):
         except Exception as e:
             if "IMAP 连接已断开" in str(e):
                 raise
-            logger.warning("NOOP 轮询异常: %s", e)
+            # 降级为 DEBUG：轮询异常是预期的瞬态错误，重连机制会自动恢复
+            logger.debug("NOOP 轮询异常: %s", e)
         return "timeout"
 
     # ---- 文件夹列表 ----

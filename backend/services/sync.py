@@ -846,6 +846,9 @@ class MailSyncService:
                             if not poll_conns[folder].connected:
                                 del poll_conns[folder]
                         if not poll_conns:
+                            # 所有 Poll 连接已断开，输出一条简洁的 INFO 日志
+                            # （代替原来每个文件夹各输出一条 STATUS 超时 WARNING）
+                            logger.info("账号 %s Poll 连接已断开，准备重连", account.email)
                             break
                         # 有部分连接存活时短暂等待后重建断开的连接
                         await asyncio.sleep(5)
@@ -916,7 +919,11 @@ class MailSyncService:
                 break
             except Exception as e:
                 # 连接异常，清理连接对象，下次循环重建
-                logger.error("账号 %s 监听异常: %s", account.email, e)
+                # 区分预期的连接断开（用 INFO）和真正的错误（保留 ERROR）
+                if isinstance(e, ConnectionError) or "连接" in str(e) or "EOF" in str(e):
+                    logger.info("账号 %s 连接已断开，准备重连", account.email)
+                else:
+                    logger.error("账号 %s 监听异常: %s", account.email, e)
                 if use_idle:
                     # 清理该账号的所有 IDLE 连接
                     from services.idle_manager import idle_manager

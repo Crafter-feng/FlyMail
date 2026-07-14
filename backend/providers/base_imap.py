@@ -822,7 +822,8 @@ class BaseIMAPReceiver(MailReceiver):
             except Exception as e:
                 if "IMAP 连接已断开" in str(e):
                     raise
-                logger.warning("NOOP 轮询异常: %s", e)
+                # 降级为 DEBUG：轮询异常是预期的瞬态错误，重连机制会自动恢复
+                logger.debug("NOOP 轮询异常: %s", e)
                 break
 
         return False
@@ -841,6 +842,7 @@ class BaseIMAPReceiver(MailReceiver):
         except Exception as e:
             # 连接断开时，标记 _conn 为 None，让上层 _idle_loop 触发重连
             self._conn = None
-            # STATUS 失败是预期的瞬态错误（连接断开/token 过期），用 WARNING 而非 ERROR
-            logger.warning("STATUS 命令失败（连接断开，等待重连）: %s", e)
+            # 降级为 DEBUG：STATUS 失败是预期的瞬态错误（连接断开/token 过期），
+            # 重连机制会自动恢复，由上层输出简洁的连接状态日志
+            logger.debug("STATUS 命令失败（连接断开，等待重连）: %s", e)
         return -1
