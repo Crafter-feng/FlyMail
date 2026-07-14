@@ -84,7 +84,6 @@
                 >
                   <span class="sheet-folder-name">{{ backupStore.folderDisplayName(f.folder) }}</span>
                   <span class="sheet-folder-count" v-if="f.count">{{ f.count }}</span>
-                  <svg v-if="backupStore.currentFolder === f.folder" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                 </button>
               </div>
             </div>
@@ -274,7 +273,9 @@ import { providerIcon } from '../utils/provider';
 import { useBackupStore } from '../stores/backup';
 import { useUIStore } from '../stores/ui';
 import { exportMailToPDF } from '../utils/export-pdf';
-import { getInitial, getAvatarColor, extractName, formatDate, formatDetailDate, formatFileSize, formatAddressList, downloadAttachment as downloadAttachmentFile } from '../utils/mail-helpers';
+import { getInitial, getAvatarColor, formatDate, formatDetailDate, formatFileSize, formatAddressList, downloadAttachment as downloadAttachmentFile } from '../utils/mail-helpers';
+// 联系人姓名匹配：与 MailList/UnifiedInbox 共享同一份映射表（模块级单例）
+import { useContactNameMap } from '../composables/useContactNameMap';
 import type { ArchivedMessage, ArchivedMessageDetail, BackupAttachment, BackupStatus } from '../types/mail';
 
 // ==================== Store ====================
@@ -340,6 +341,8 @@ const metaCc = computed(() => detailData.value?.cc || selectedMessage.value?.cc 
 
 onMounted(async () => {
   await loadStatus();
+  // 加载联系人映射表（模块级单例，已加载则跳过，不重复请求）
+  loadContactMap();
   // 默认选中第一个账号（无"全部"选项，必须选择具体账号）
   if (accounts.value.length > 0) {
     await switchAccount(accounts.value[0].account_id);
@@ -494,10 +497,9 @@ async function printMail() {
 
 // ==================== 工具函数 ====================
 
-/** 显示发件人名称：优先使用姓名，无则取邮箱前缀 */
-function displayName(addr: string): string {
-  return extractName(addr);
-}
+// 联系人姓名匹配：优先返回联系人姓名，未命中则用 extractName 逻辑
+// 与 MailList/UnifiedInbox 共享同一份模块级映射表，避免重复请求
+const { displayName, loadMap: loadContactMap } = useContactNameMap();
 
 /** 格式化时间戳（归档时间，秒级时间戳） */
 function formatTimestamp(ts: number): string {
@@ -1307,10 +1309,13 @@ function downloadAttachment(att: BackupAttachment) {
     background: #fff;
     font-size: 17px;
     color: var(--text-primary, #1d1d1f);
+    text-align: left;
     cursor: pointer;
     font-family: inherit;
+    transition: background 0.15s;
   }
-  .sheet-item.active { color: var(--accent-blue, #007aff); }
+  .sheet-item:active { background: #f2f2f7; }
+  .sheet-item.active { color: var(--accent-blue, #007aff); font-weight: 500; }
   .sheet-item + .sheet-item { border-top: 0.5px solid #e5e5ea; }
   .sheet-folder-name { flex: 1; }
   .sheet-folder-count { font-size: 15px; color: #8e8e93; margin-right: 8px; }

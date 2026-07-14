@@ -104,11 +104,11 @@
               </div>
             </div>
             <div class="header-actions">
-              <button class="btn-action btn-delete" @click="handleDelete(selectedContact)">
+              <button class="btn-action btn-delete" @click="handleDelete(selectedContact)" title="删除联系人">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                 </svg>
-                删除
+                <span class="btn-text">删除</span>
               </button>
             </div>
           </div>
@@ -1314,8 +1314,27 @@ onUnmounted(() => {
     font-size: 18px;
   }
 
+  /* 删除按钮：不占满整行，靠右对齐与头像姓名同一行 */
   .header-actions {
-    width: 100%;
+    flex-shrink: 0;
+  }
+
+  /* 移动端删除按钮只显示图标，隐藏文字 */
+  .btn-delete .btn-text {
+    display: none;
+  }
+  .btn-delete {
+    padding: 7px 9px;
+  }
+
+  /* 邮箱数量文字不换行，避免纵向分布 */
+  .detail-meta {
+    flex-wrap: nowrap;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .meta-email-count {
+    flex-shrink: 0;
   }
 
   .stats-grid,

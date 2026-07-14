@@ -11,11 +11,26 @@
           </div>
           <p class="brand-slogan">专为多邮箱用户打造的自托管邮件客户端</p>
         </div>
+        <!-- 检测更新按钮：点击后从 GitHub 拉取最新 VERSION 比对 -->
+        <button
+          class="check-update-btn"
+          :disabled="checking"
+          @click="checkUpdate"
+          :title="checking ? '正在检测...' : '检测是否有新版本'"
+        >
+          <svg v-if="!checking" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12a9 9 0 11-6.219-8.56"/><polyline points="21 4 21 10 15 10"/>
+          </svg>
+          <svg v-else class="spin-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12a9 9 0 11-6.219-8.56"/>
+          </svg>
+          <span>{{ checking ? '检测中' : '检测更新' }}</span>
+        </button>
       </div>
       <p class="brand-desc">
-        统一管理 Gmail、Outlook、腾讯邮箱、网易邮箱、iCloud 等主流平台的邮件数据。
+        统一管理 Gmail、Outlook、QQ 邮箱、网易邮箱、iCloud、新浪邮箱等主流平台的邮件数据。
         聚合收件箱让您在一个界面查看所有邮箱的重要邮件，告别频繁切换账号的烦恼。
-        支持多账号管理、邮件收发、富文本编辑、附件上传下载、定时发送、草稿箱、个性签名及实时同步等丰富功能，满足日常办公与个人使用需求。
+        支持多账号管理、邮件收发、富文本编辑、附件上传下载、定时发送、草稿箱、个性签名、本地备份及实时同步等丰富功能，满足日常办公与个人使用需求。
       </p>
     </div>
 
@@ -54,15 +69,73 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue';
+import { useUIStore } from '../stores/ui';
+
 const version = import.meta.env.VITE_APP_VERSION || '0.0.0';
 const base = import.meta.env.BASE_URL;
+const uiStore = useUIStore();
+
+// 检测更新状态
+const checking = ref(false);
+
+// GitHub 仓库 VERSION 文件原始地址（raw.githubusercontent.com 支持 CORS）
+const GITHUB_VERSION_URL = 'https://raw.githubusercontent.com/DinDing1/FlyMail/main/VERSION';
 
 function onLogoError(e: Event) {
   (e.target as HTMLImageElement).style.display = 'none';
 }
 
-const features = ['多邮箱聚合', '实时同步', '自托管隐私', '跨平台访问'];
+const features = ['多邮箱聚合', '实时同步', '本地备份', '自托管隐私', '移动端适配'];
 const techs = ['Vue 3', 'TypeScript', 'FastAPI', 'SQLite', 'IMAP', 'WebSocket'];
+
+/**
+ * 比较两个语义化版本号
+ * 返回: 1 表示 v1 > v2，-1 表示 v1 < v2，0 表示相等
+ * 示例: compareVersions('1.0.6', '1.0.5') → 1
+ */
+function compareVersions(v1: string, v2: string): number {
+  const parts1 = v1.split('.').map(Number);
+  const parts2 = v2.split('.').map(Number);
+  const maxLen = Math.max(parts1.length, parts2.length);
+  for (let i = 0; i < maxLen; i++) {
+    const a = parts1[i] || 0;
+    const b = parts2[i] || 0;
+    if (a > b) return 1;
+    if (a < b) return -1;
+  }
+  return 0;
+}
+
+/**
+ * 检测更新：从 GitHub 拉取最新 VERSION 文件，与当前版本比较
+ * - GitHub 版本更高：提示可更新
+ * - 版本一致或当前更高：提示已是最新
+ * - 网络失败：提示检测失败
+ */
+async function checkUpdate() {
+  if (checking.value) return;
+  checking.value = true;
+  try {
+    const res = await fetch(GITHUB_VERSION_URL, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const latestVersion = (await res.text()).trim();
+    if (!latestVersion) throw new Error('版本号为空');
+
+    const result = compareVersions(version, latestVersion);
+    if (result < 0) {
+      // 当前版本低于 GitHub 版本，提示可更新
+      uiStore.success(`发现新版本 v${latestVersion}，请前往 GitHub 下载`);
+    } else {
+      // 版本一致或当前更高
+      uiStore.success(`当前已是最新版本（v${version}）`);
+    }
+  } catch (e: any) {
+    uiStore.error('检测更新失败，请检查网络连接');
+  } finally {
+    checking.value = false;
+  }
+}
 </script>
 
 <style scoped>
@@ -130,6 +203,41 @@ const techs = ['Vue 3', 'TypeScript', 'FastAPI', 'SQLite', 'IMAP', 'WebSocket'];
   font-size: var(--text-sm);
   color: var(--text-tertiary);
   margin: 3px 0 0;
+}
+
+/* 检测更新按钮：靠右对齐，macOS 风格圆角按钮 */
+.check-update-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-full, 20px);
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+.check-update-btn:hover:not(:disabled) {
+  background: var(--color-accent);
+  color: #fff;
+  border-color: var(--color-accent);
+}
+.check-update-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* 旋转动画（检测中状态） */
+.spin-icon {
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .brand-desc {
@@ -234,6 +342,14 @@ const techs = ['Vue 3', 'TypeScript', 'FastAPI', 'SQLite', 'IMAP', 'WebSocket'];
 
   .brand-name {
     font-size: 17px;
+  }
+
+  /* 移动端按钮只显示图标，节省空间 */
+  .check-update-btn span {
+    display: none;
+  }
+  .check-update-btn {
+    padding: 6px 8px;
   }
 
   .qr-img {
