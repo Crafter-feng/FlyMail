@@ -196,6 +196,27 @@ async def init_db():
     except Exception as e:
         logger.debug("迁移加列已存在，忽略 cached_messages.cc: %s", e)
 
+    # 数据迁移：将 message_archive 表的 date 字段从 RFC 2822 格式转为 ISO 格式
+    # RFC 2822（如 'Fri, 11 Jul 2026 02:17:55 +0000'）无法被 SQLite 字符串排序正确处理
+    # ISO 格式（如 '2026-07-11 02:17:55'）字符串排序等价于时间排序
+    try:
+        from services.backup import normalize_date_for_sort
+        cursor = await db.execute(
+            "SELECT id, date FROM message_archive WHERE date LIKE '%,%' OR date LIKE '%+%'"
+        )
+        rows = await cursor.fetchall()
+        migrated = 0
+        for row in rows:
+            new_date = normalize_date_for_sort(row[1])
+            if new_date and new_date != row[1]:
+                await db.execute("UPDATE message_archive SET date = ? WHERE id = ?", (new_date, row[0]))
+                migrated += 1
+        if migrated > 0:
+            await db.commit()
+            logger.info("归档日期迁移完成: %d 条记录转为 ISO 格式", migrated)
+    except Exception as e:
+        logger.debug("归档日期迁移失败（不影响启动）: %s", e)
+
     # 联系人表：存储联系人基本信息（不含邮箱，邮箱在 contact_emails 子表）
     # CREATE IF NOT EXISTS 保证不丢数据；ALTER TABLE 补列保证字段完整
     await db.execute("""
@@ -233,6 +254,37 @@ async def init_db():
         await db.execute("ALTER TABLE contacts ADD COLUMN company TEXT DEFAULT ''")
     except Exception as e:
         logger.debug("迁移加列已存在，忽略 contacts.company: %s", e)
+
+    # 邮件归档表：存储备份元数据，与 cached_messages 完全独立，持久保留
+    # 即使服务器删除邮件，本表记录和对应 .eml 文件也保留
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS message_archive (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_uid TEXT NOT NULL,
+            account_id TEXT NOT NULL,
+            folder TEXT NOT NULL,
+            uid INTEGER NOT NULL,
+            message_id TEXT DEFAULT '',
+            subject TEXT DEFAULT '',
+            from_addr TEXT DEFAULT '',
+            to_addr TEXT DEFAULT '',
+            cc TEXT DEFAULT '',
+            date TEXT DEFAULT '',
+            size INTEGER DEFAULT 0,
+            eml_path TEXT NOT NULL,
+            flags TEXT DEFAULT '',
+            has_attachments INTEGER DEFAULT 0,
+            archived_at REAL DEFAULT 0,
+            is_deleted_on_server INTEGER DEFAULT 0,
+            deleted_at REAL DEFAULT 0,
+            UNIQUE(account_id, folder, uid)
+        )
+    """)
+    # 索引加速常用查询：按用户查、按账号+文件夹查、按日期排序、按删除状态筛选
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_archive_user ON message_archive(user_uid)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_archive_account_folder ON message_archive(account_id, folder)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_archive_date ON message_archive(date)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_archive_deleted ON message_archive(user_uid, is_deleted_on_server)")
 
     await db.commit()
 
@@ -724,6 +776,27 @@ async def get_cached_message_detail(account_id: str, uid: int, folder: str) -> O
         "cc": row[12] or "",  # 抄送人（回复时填充抄送列表）
         "attachments": [],  # 缓存中不存附件列表，需要 IMAP 拉取时补充
     }
+
+
+async def get_cached_message_flags(account_id: str, uid: int, folder: str) -> Optional[dict]:
+    """获取邮件的已读/星标状态（不检查正文是否存在）
+
+    与 get_cached_message_detail 不同，此函数即使 cached_messages 表中
+    没有正文（body_html/body_text 为空）也会返回 is_read/is_starred，
+    供从 .eml 备份读取详情时补充邮件状态。
+
+    Returns:
+        {"is_read": bool, "is_starred": bool} 或 None（记录不存在）
+    """
+    db = await get_db()
+    cursor = await db.execute(
+        "SELECT is_read, is_starred FROM cached_messages WHERE account_id = ? AND folder = ? AND uid = ?",
+        (account_id, folder, uid),
+    )
+    row = await cursor.fetchone()
+    if not row:
+        return None
+    return {"is_read": bool(row[0]), "is_starred": bool(row[1])}
 
 
 async def get_max_cached_uid(user_uid: str, account_id: str, folder: str) -> int:
@@ -1432,3 +1505,301 @@ async def get_contact_stats(user_uid: str, email: str) -> dict:
     if row and row[0] > 0:
         return {"count": row[0], "last_date": row[1] or ""}
     return {"count": 0, "last_date": ""}
+
+
+# ==================== 邮件归档 CRUD ====================
+# message_archive 表的增删改查，与 cached_messages 完全独立
+# .eml 文件永不删除，即使服务器删除邮件也保留本地备份
+
+
+async def upsert_message_archive(archive: dict) -> bool:
+    """插入或更新归档记录（UPSERT，基于 account_id+folder+uid 唯一约束）
+
+    新记录插入时 is_deleted_on_server 默认为 0；
+    已存在记录更新时保留原有的 is_deleted_on_server 和 deleted_at 字段（避免误覆盖）。
+    """
+    db = await get_db()
+    now = time.time()
+    await db.execute(
+        """INSERT INTO message_archive
+           (user_uid, account_id, folder, uid, message_id, subject,
+            from_addr, to_addr, cc, date, size, eml_path, flags,
+            has_attachments, archived_at, is_deleted_on_server, deleted_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(account_id, folder, uid) DO UPDATE SET
+               message_id = excluded.message_id,
+               subject = excluded.subject,
+               from_addr = excluded.from_addr,
+               to_addr = excluded.to_addr,
+               cc = excluded.cc,
+               date = excluded.date,
+               size = excluded.size,
+               eml_path = excluded.eml_path,
+               flags = excluded.flags,
+               has_attachments = excluded.has_attachments,
+               archived_at = excluded.archived_at""",
+        (
+            archive["user_uid"], archive["account_id"], archive["folder"],
+            archive["uid"], archive.get("message_id", ""),
+            archive.get("subject", ""), archive.get("from_addr", ""),
+            archive.get("to_addr", ""), archive.get("cc", ""),
+            archive.get("date", ""), archive.get("size", 0),
+            archive["eml_path"], archive.get("flags", ""),
+            archive.get("has_attachments", 0), now,
+            archive.get("is_deleted_on_server", 0),
+            archive.get("deleted_at", 0),
+        ),
+    )
+    await db.commit()
+    return True
+
+
+async def get_archived_messages(
+    user_uid: str,
+    account_id: str = "",
+    folder: str = "",
+    page: int = 1,
+    page_size: int = 40,
+    deleted_filter: str = "",
+) -> dict:
+    """分页查询归档邮件列表（按 date 倒序）
+
+    folder 参数支持核心类别路径（INBOX/Sent/Drafts/Junk/Trash），
+    会自动匹配所有映射到该类别的 IMAP 路径（含网易 Modified UTF-7 编码）。
+    deleted_filter: ""=全部, "deleted"=仅服务器已删除, "alive"=仅存活
+    """
+    db = await get_db()
+    where = ["user_uid = ?"]
+    params: list = [user_uid]
+
+    if account_id:
+        where.append("account_id = ?")
+        params.append(account_id)
+    if folder:
+        # 核心类别文件夹：查询所有映射到该类别的 IMAP 路径
+        from services.backup import classify_folder_category
+        target_category = classify_folder_category(folder)
+        if target_category != 'other':
+            # 先查询该用户所有不同的 folder 值
+            if account_id:
+                cursor = await db.execute(
+                    "SELECT DISTINCT folder FROM message_archive WHERE user_uid = ? AND account_id = ?",
+                    (user_uid, account_id),
+                )
+            else:
+                cursor = await db.execute(
+                    "SELECT DISTINCT folder FROM message_archive WHERE user_uid = ?",
+                    (user_uid,),
+                )
+            all_folders = [r[0] for r in await cursor.fetchall()]
+            # 筛选出匹配该类别的 IMAP 路径
+            matching = [f for f in all_folders if classify_folder_category(f) == target_category]
+            if matching:
+                placeholders = ",".join("?" * len(matching))
+                where.append(f"folder IN ({placeholders})")
+                params.extend(matching)
+            else:
+                # 没有匹配的路径，返回空结果
+                where.append("1=0")
+        else:
+            where.append("folder = ?")
+            params.append(folder)
+    if deleted_filter == "deleted":
+        where.append("is_deleted_on_server = 1")
+    elif deleted_filter == "alive":
+        where.append("is_deleted_on_server = 0")
+
+    where_clause = " AND ".join(where)
+
+    # 查总数
+    cursor = await db.execute(
+        f"SELECT COUNT(*) FROM message_archive WHERE {where_clause}", params
+    )
+    total = (await cursor.fetchone())[0]
+
+    # 分页查询（按 date 倒序，ISO 格式字符串排序等价于时间排序）
+    offset = (page - 1) * page_size
+    cursor = await db.execute(
+        f"""SELECT * FROM message_archive
+            WHERE {where_clause}
+            ORDER BY date DESC
+            LIMIT ? OFFSET ?""",
+        params + [page_size, offset],
+    )
+    rows = await cursor.fetchall()
+    columns = [d[0] for d in cursor.description]
+    messages = [dict(zip(columns, row)) for row in rows]
+
+    return {
+        "messages": messages,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
+
+
+async def get_archived_message_by_uid(user_uid: str, account_id: str, folder: str, uid: int) -> dict | None:
+    """按 user_uid+account_id+folder+uid 查询单封归档邮件
+
+    必须传入 user_uid 做归属校验，避免越权访问其他用户的归档邮件。
+    """
+    db = await get_db()
+    cursor = await db.execute(
+        "SELECT * FROM message_archive WHERE user_uid = ? AND account_id = ? AND folder = ? AND uid = ?",
+        (user_uid, account_id, folder, uid),
+    )
+    row = await cursor.fetchone()
+    if row is None:
+        return None
+    columns = [d[0] for d in cursor.description]
+    return dict(zip(columns, row))
+
+
+async def mark_archive_deleted(account_id: str, folder: str, uids: list[int]) -> int:
+    """批量标记归档邮件为"服务器已删除"（不删除 .eml 文件）
+
+    只更新 is_deleted_on_server=0 的记录，避免重复更新已标记的记录。
+    返回实际标记的行数。
+    """
+    if not uids:
+        return 0
+    db = await get_db()
+    now = time.time()
+    placeholders = ",".join("?" * len(uids))
+    cursor = await db.execute(
+        f"""UPDATE message_archive
+            SET is_deleted_on_server = 1, deleted_at = ?
+            WHERE account_id = ? AND folder = ?
+              AND uid IN ({placeholders})
+              AND is_deleted_on_server = 0""",
+        [now, account_id, folder] + list(uids),
+    )
+    await db.commit()
+    return cursor.rowcount
+
+
+async def get_archive_stats(user_uid: str) -> dict:
+    """获取归档统计：总数量、各邮箱归档数量、最后归档时间、已删除数量
+
+    JOIN accounts 表获取 email 和 provider，供前端账号 tabs 显示。
+    """
+    db = await get_db()
+    # 总体统计
+    cursor = await db.execute(
+        """SELECT COUNT(*) as total,
+                  SUM(is_deleted_on_server) as deleted,
+                  MAX(archived_at) as last_archived
+           FROM message_archive WHERE user_uid = ?""",
+        (user_uid,),
+    )
+    row = await cursor.fetchone()
+    total = row[0] if row else 0
+    deleted = row[1] if row and row[1] else 0
+    last_archived = row[2] if row and row[2] else 0
+
+    # 各账号统计（JOIN accounts 表获取 email 和 provider）
+    cursor = await db.execute(
+        """SELECT ma.account_id,
+                  COUNT(*) as count,
+                  SUM(ma.is_deleted_on_server) as deleted_count,
+                  MAX(ma.archived_at) as last_time,
+                  a.email,
+                  a.provider
+           FROM message_archive ma
+           LEFT JOIN accounts a ON ma.account_id = a.id
+           WHERE ma.user_uid = ?
+           GROUP BY ma.account_id""",
+        (user_uid,),
+    )
+    rows = await cursor.fetchall()
+    accounts = []
+    for r in rows:
+        accounts.append({
+            "account_id": r[0],
+            "count": r[1],
+            "deleted_count": r[2] if r[2] else 0,
+            "last_archived": r[3] if r[3] else 0,
+            "email": r[4] or "",
+            "provider": r[5] or "",
+        })
+
+    return {
+        "total": total,
+        "deleted": deleted,
+        "last_archived": last_archived,
+        "accounts": accounts,
+    }
+
+
+async def get_archive_folders(user_uid: str, account_id: str = "") -> list[dict]:
+    """获取归档邮件的文件夹列表（按5个核心文件夹类别汇总统计）
+
+    固定返回5个核心文件夹（收件箱/已发送/草稿箱/垃圾邮件/已删除），
+    将所有 IMAP 路径（含网易 Modified UTF-7 编码）映射到对应类别。
+    account_id 为空时返回所有账号的文件夹汇总。
+    """
+    db = await get_db()
+    if account_id:
+        cursor = await db.execute(
+            """SELECT folder,
+                      COUNT(*) as count,
+                      SUM(is_deleted_on_server) as deleted_count
+               FROM message_archive
+               WHERE user_uid = ? AND account_id = ?
+               GROUP BY folder""",
+            (user_uid, account_id),
+        )
+    else:
+        cursor = await db.execute(
+            """SELECT folder,
+                      COUNT(*) as count,
+                      SUM(is_deleted_on_server) as deleted_count
+               FROM message_archive
+               WHERE user_uid = ?
+               GROUP BY folder""",
+            (user_uid,),
+        )
+    rows = await cursor.fetchall()
+
+    # 按核心文件夹类别汇总（将所有 IMAP 路径映射到5个类别）
+    from services.backup import classify_folder_category
+    categories = {
+        'inbox':  {'folder': 'INBOX',          'count': 0, 'deleted_count': 0},
+        'sent':   {'folder': 'Sent',           'count': 0, 'deleted_count': 0},
+        'drafts': {'folder': 'Drafts',         'count': 0, 'deleted_count': 0},
+        'junk':   {'folder': 'Junk',           'count': 0, 'deleted_count': 0},
+        'trash':  {'folder': 'Trash',          'count': 0, 'deleted_count': 0},
+    }
+    for r in rows:
+        folder_path = r[0]
+        count = r[1]
+        deleted = r[2] or 0
+        category = classify_folder_category(folder_path)
+        if category in categories:
+            categories[category]['count'] += count
+            categories[category]['deleted_count'] += deleted
+
+    # 固定顺序返回5个核心文件夹
+    return [
+        categories['inbox'],
+        categories['sent'],
+        categories['drafts'],
+        categories['junk'],
+        categories['trash'],
+    ]
+
+
+async def get_archived_uids(account_id: str, folder: str) -> dict[int, str]:
+    """获取指定文件夹已归档的 UID 及其 eml_path（用于增量归档时跳过已存在的）
+
+    返回 dict: {uid: eml_path（相对路径）}
+    调用方可结合 backup_root 拼接绝对路径后校验本地文件是否真实存在，
+    避免数据库有记录但文件丢失时不重新归档的问题。
+    """
+    db = await get_db()
+    cursor = await db.execute(
+        "SELECT uid, eml_path FROM message_archive WHERE account_id = ? AND folder = ?",
+        (account_id, folder),
+    )
+    rows = await cursor.fetchall()
+    return {row[0]: (row[1] or "") for row in rows}

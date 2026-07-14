@@ -144,6 +144,7 @@ class MessageItem(BaseModel):
     subject: str = Field(default="", description="邮件主题")
     from_addr: str = Field(default="", description="发件人")
     to_addr: str = Field(default="", description="收件人")
+    cc: str = Field(default="", description="抄送人（逗号分隔的地址字符串）")
     date: str = Field(default="", description="邮件日期")
     is_read: bool = Field(default=False, description="是否已读")
     is_starred: bool = Field(default=False, description="是否星标")

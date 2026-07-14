@@ -24,6 +24,7 @@ from models import CachedMessage, Account
 from providers.base import Message
 from providers.factory import ProviderFactory
 from utils.logger import get_logger
+from utils.tasks import create_background_task
 
 logger = get_logger("cache")
 
@@ -198,6 +199,17 @@ async def _do_sync(receiver, account: Account, folder: str, force_full: bool = F
             if cached_count > total_count:
                 all_uids_for_purge = set(await receiver.fetch_new_message_uids(folder, since_uid=0))
                 if all_uids_for_purge:
+                    # 先标记归档表（在 purge 删除缓存记录之前，否则无法计算差集）
+                    # 保留 .eml 文件和归档记录，仅标记 is_deleted_on_server=1
+                    try:
+                        from services.backup import mark_archived_as_deleted
+                        cached_uids = await get_cached_uids(account.id, folder)
+                        deleted_uids = cached_uids - all_uids_for_purge
+                        if deleted_uids:
+                            await mark_archived_as_deleted(account.id, folder, list(deleted_uids))
+                    except Exception as e:
+                        logger.debug("标记归档删除失败(增量): %s", e)
+                    # 再执行原有的缓存清理
                     purged = await purge_deleted_from_cache(account.id, folder, all_uids_for_purge)
                     if purged > 0:
                         logger.info("增量清理过期缓存: 账号=%s, 文件夹=%s, 删除 %d 封",
@@ -227,6 +239,21 @@ async def _do_sync(receiver, account: Account, folder: str, force_full: bool = F
 
         cached = _messages_to_cached(messages, account)
         await upsert_cached_messages(cached)
+
+        # 邮件归档触发：检查用户是否开启备份，且当前账号在备份列表中
+        # 只归档真正新增的邮件（uid 不在 existing_uids 中的）
+        # 使用批量归档（复用一个 IMAP 连接），避免每封邮件创建连接导致 IMAP 服务器拒绝
+        try:
+            from services.backup import archive_messages_batch, should_archive
+            if await should_archive(account.user_uid, account.id):
+                new_uids = [m.uid for m in messages if m.uid not in existing_uids]
+                if new_uids:
+                    create_background_task(
+                        archive_messages_batch(account, folder, new_uids),
+                        name=f"archive_batch_{account.id}_{folder}"
+                    )
+        except Exception as e:
+            logger.debug("归档触发失败（不影响同步）: %s", e)
 
         # 日志中包含已读/未读统计，方便排查问题
         read_count = sum(1 for m in messages if m.is_read)
@@ -286,6 +313,17 @@ async def _do_sync(receiver, account: Account, folder: str, force_full: bool = F
 
     # 清理缓存中已不在 IMAP 服务器上的邮件
     if all_uids is not None and len(all_uids) > 0:
+        # 先标记归档表（在 purge 删除缓存记录之前）
+        # 保留 .eml 文件和归档记录，仅标记 is_deleted_on_server=1
+        try:
+            from services.backup import mark_archived_as_deleted
+            cached_uids = await get_cached_uids(account.id, folder)
+            deleted_uids = cached_uids - all_uids
+            if deleted_uids:
+                await mark_archived_as_deleted(account.id, folder, list(deleted_uids))
+        except Exception as e:
+            logger.debug("标记归档删除失败(全量): %s", e)
+        # 再执行原有的缓存清理
         purged = await purge_deleted_from_cache(account.id, folder, all_uids)
         if purged > 0:
             logger.info("清理过期缓存: 账号=%s, 文件夹=%s, 删除 %d 封", account.email, folder, purged)

@@ -228,27 +228,53 @@
       <!-- 标题+正文+附件全部在一个滚动区域内 -->
       <div class="detail-body">
         <div class="detail-header">
+          <!-- 主题 -->
           <h2 class="detail-subject">{{ selectedMessage.subject || '(无主题)' }}</h2>
-          <div class="detail-meta">
+
+          <!-- 第一行：头像 + 发件人姓名/邮箱 + 加入联系人 + 账号标签 -->
+          <div class="detail-sender-row">
             <div class="meta-avatar" :style="{ background: getAvatarColor(selectedMessage.from_addr) }">
               {{ getInitial(selectedMessage.from_addr) }}
             </div>
-            <div class="meta-info">
-              <div class="meta-from">
-                <span class="from-name">{{ displayName(selectedMessage.from_addr) }}</span>
-                <span class="from-email" v-if="displayName(selectedMessage.from_addr) !== selectedMessage.from_addr">{{ selectedMessage.from_addr }}</span>
-                <button class="btn-add-contact" @click="addToContacts" title="加入联系人">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/>
-                  </svg>
-                </button>
-                <span v-if="selectedMessage.account_email" class="detail-account-tag" :class="selectedMessage.account_provider">
-                  {{ selectedMessage.account_email }}
-                </span>
-              </div>
-              <div class="meta-date">{{ formatDetailDate(selectedMessage.date) }}</div>
+            <div class="meta-from">
+              <span class="from-name">{{ displayName(selectedMessage.from_addr) }}</span>
+              <span class="from-email" v-if="displayName(selectedMessage.from_addr) !== selectedMessage.from_addr">&lt;{{ selectedMessage.from_addr }}&gt;</span>
+              <button class="btn-add-contact" @click="addToContacts" title="加入联系人">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/>
+                </svg>
+              </button>
+              <span v-if="selectedMessage.account_email" class="detail-account-tag" :class="selectedMessage.account_provider">
+                {{ selectedMessage.account_email }}
+              </span>
             </div>
           </div>
+
+          <!-- 分割线 -->
+          <div class="detail-divider"></div>
+
+          <!-- 灰色信息卡：发件人 / 收件人 / 抄送 / 时间（全宽） -->
+          <div class="meta-card">
+            <div class="meta-row">
+              <span class="meta-row-label">发件人</span>
+              <span class="meta-row-value" :title="selectedMessage.from_addr">{{ formatAddressList(selectedMessage.from_addr) }}</span>
+            </div>
+            <div class="meta-row" v-if="selectedMessage.to_addr">
+              <span class="meta-row-label">收件人</span>
+              <span class="meta-row-value" :title="selectedMessage.to_addr">{{ formatAddressList(selectedMessage.to_addr) }}</span>
+            </div>
+            <div class="meta-row" v-if="selectedMessage.cc">
+              <span class="meta-row-label">抄送</span>
+              <span class="meta-row-value" :title="selectedMessage.cc">{{ formatAddressList(selectedMessage.cc) }}</span>
+            </div>
+            <div class="meta-row">
+              <span class="meta-row-label">时间</span>
+              <span class="meta-row-value">{{ formatDetailDate(selectedMessage.date) }}</span>
+            </div>
+          </div>
+
+          <!-- 分割线（信息卡与正文之间） -->
+          <div class="detail-divider"></div>
         </div>
 
         <div v-if="selectedMessage.body_html || selectedMessage.body_text" v-html="sanitizeHtml(selectedMessage.body_html) || selectedMessage.body_text" class="detail-content" @click="handleMailLinkClick"></div>
@@ -320,7 +346,7 @@ import { useUIStore } from '../stores/ui';
 import api from '../utils/api';
 import { providerIcon } from '../utils/provider';
 import { sanitizeHtml, handleMailLinkClick } from '../utils/sanitize';
-import { getInitial, getAvatarColor, formatDate, formatDetailDate, formatFileSize, extractEmails, extractName, downloadAttachment as downloadAttachmentFile } from '../utils/mail-helpers';
+import { getInitial, getAvatarColor, formatDate, formatDetailDate, formatFileSize, extractEmails, extractName, downloadAttachment as downloadAttachmentFile, formatAddressList } from '../utils/mail-helpers';
 import { exportMailToPDF } from '../utils/export-pdf';
 import type { Attachment, Message } from '../types/mail';
 import { useWebSocket } from '../composables/useWebSocket';
@@ -968,18 +994,24 @@ function downloadAttachment(att: Attachment) {
   .btn-back span,
   .btn-action span { display: none; }
 }
-.detail-header { padding: var(--space-4) var(--space-5) var(--space-3); border-bottom: 1px solid var(--border-color); }
+.detail-header { padding: var(--space-4) var(--space-5) var(--space-3); }
 .detail-subject { font-size: var(--text-xl); font-weight: var(--font-semibold); color: var(--text-primary); line-height: 1.3; margin-bottom: var(--space-3); }
-.detail-meta { display: flex; align-items: center; gap: var(--space-3); }
+/* 第一行：头像 + 发件人姓名/邮箱 */
+.detail-sender-row { display: flex; align-items: center; gap: var(--space-3); }
 .meta-avatar { width: 36px; height: 36px; border-radius: var(--border-radius-full); display: flex; align-items: center; justify-content: center; color: white; font-size: var(--text-sm); font-weight: var(--font-semibold); flex-shrink: 0; }
-.meta-info { min-width: 0; }
-.meta-from { font-size: var(--text-sm); color: var(--text-primary); font-weight: var(--font-medium); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 6px; }
+.meta-from { font-size: var(--text-sm); color: var(--text-primary); font-weight: var(--font-medium); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; }
 .from-name { overflow: hidden; text-overflow: ellipsis; }
 .from-email { font-size: 12px; color: var(--text-secondary); font-weight: var(--font-normal); overflow: hidden; text-overflow: ellipsis; }
 /* 加入联系人按钮 */
 .btn-add-contact { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border: none; border-radius: 6px; background: transparent; color: var(--text-tertiary); cursor: pointer; transition: background 0.15s, color 0.15s; flex-shrink: 0; }
 .btn-add-contact:hover { background: var(--bg-hover); color: var(--color-accent); }
-.meta-date { font-size: var(--text-xs); color: var(--text-tertiary); margin-top: 2px; }
+/* 分割线：头像行 / 信息卡 / 正文 之间 */
+.detail-divider { height: 1px; background: var(--border-color, rgba(0, 0, 0, 0.08)); margin: 12px 0; }
+/* 邮件信息卡片：灰色背景，全宽 */
+.meta-card { width: 100%; box-sizing: border-box; padding: 12px 14px; background: var(--bg-tertiary, rgba(0, 0, 0, 0.03)); border-radius: 10px; display: flex; flex-direction: column; gap: 6px; }
+.meta-row { display: flex; align-items: flex-start; gap: 10px; font-size: var(--text-xs); line-height: 1.6; }
+.meta-row-label { color: var(--text-tertiary); flex-shrink: 0; width: 48px; font-weight: 500; }
+.meta-row-value { color: var(--text-primary); word-break: break-all; flex: 1; min-width: 0; }
 .detail-account-tag { font-size: 10px; padding: 1px 7px; border-radius: 10px; font-weight: 500; }
 .detail-account-tag.qq { background: rgba(255, 220, 4, 0.18); color: #D4940A; }
 .detail-account-tag.gmail { background: rgba(234, 67, 53, 0.1); color: #D93025; }

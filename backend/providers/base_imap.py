@@ -193,8 +193,9 @@ class BaseIMAPReceiver(MailReceiver):
                 continue
         return payload.decode("utf-8", errors="replace")
 
-    def _decode_header(self, header: str) -> str:
-        """解码邮件头部编码"""
+    @staticmethod
+    def _decode_header(header: str) -> str:
+        """解码邮件头部编码（静态方法，供 backup.py 等外部模块复用）"""
         if not header:
             return ""
         decoded_parts = decode_header(header)
@@ -210,7 +211,8 @@ class BaseIMAPReceiver(MailReceiver):
                 result.append(part)
         return " ".join(result)
 
-    def _parse_date(self, date_str: str) -> str:
+    @staticmethod
+    def _parse_date(date_str: str) -> str:
         """解析日期字符串，将 RFC 2822 格式转为 UTC ISO 8601（带 Z 后缀）。
 
         统一转为 UTC 并加 Z 后缀，前端 new Date() 能自动转为本地时区显示。
@@ -409,6 +411,32 @@ class BaseIMAPReceiver(MailReceiver):
             if part_number == 0:
                 return msg.get_payload(decode=True)
 
+        return None
+
+    # ---- 邮件源码获取（用于 .eml 备份） ----
+
+    async def fetch_raw_email(self, folder: str, uid: int) -> Optional[bytes]:
+        """获取邮件完整 MIME 源码（用于 .eml 备份）
+
+        使用 UID FETCH BODY.PEEK[] 获取完整邮件字节流，
+        不设置 \\Seen 标志，不影响邮件状态。
+        """
+        if not self._conn:
+            raise ConnectionError("Not connected")
+        return await asyncio.to_thread(self._fetch_raw_sync, folder, uid)
+
+    def _fetch_raw_sync(self, folder: str, uid: int) -> Optional[bytes]:
+        """同步获取邮件完整 MIME 源码"""
+        folder = self._normalize_folder(folder)
+        status, _ = self._conn.select(self._quote_mailbox(folder), readonly=True)
+        if status != "OK":
+            return None
+        status, msg_data = self._conn.uid('FETCH', str(uid), "(BODY.PEEK[])")
+        if status != "OK":
+            return None
+        for item in msg_data:
+            if isinstance(item, tuple) and len(item) == 2:
+                return item[1]
         return None
 
     # ---- 增量同步 ----

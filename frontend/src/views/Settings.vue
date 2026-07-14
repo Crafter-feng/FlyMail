@@ -75,6 +75,144 @@
       </transition>
     </div>
 
+    <!-- ==================== 邮件备份配置（可折叠） ==================== -->
+    <div class="provider-card">
+      <button class="gmail-toggle backup-toggle" @click="backupOpen = !backupOpen">
+        <div class="gmail-toggle-left">
+          <div class="gmail-toggle-icon backup-toggle-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+          </div>
+          <div class="gmail-toggle-text">
+            <span class="gmail-toggle-title">邮件备份</span>
+            <span class="gmail-toggle-desc">将邮件以 .eml 格式备份到飞牛OS 授权目录</span>
+          </div>
+        </div>
+        <svg class="guide-arrow" :class="{ open: backupOpen }" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+
+      <transition name="expand">
+        <div v-if="backupOpen" class="card-body">
+          <!-- 总开关 -->
+          <div class="field proxy-field">
+            <label class="field-label proxy-label">
+              <label class="toggle-switch">
+                <input type="checkbox" v-model="backupForm.enabled" />
+                <span class="toggle-slider"></span>
+              </label>
+              <span>启用自动备份</span>
+            </label>
+            <span class="field-hint">开启后，收件时自动将邮件归档为 .eml 文件保存到本地授权目录，防止邮件服务器删除后无法找回。</span>
+          </div>
+
+          <!-- 备份邮箱下拉多选 -->
+          <div class="field" v-if="backupAccounts.length > 0" ref="backupSelectRef">
+            <label class="field-label">备份邮箱</label>
+            <div class="backup-multi-select" :class="{ disabled: !backupForm.enabled }">
+              <!-- 触发器：点击展开/收起 -->
+              <div class="select-trigger" @click="backupForm.enabled && (backupDropdownOpen = !backupDropdownOpen)">
+                <!-- 已选邮箱标签 -->
+                <div class="selected-tags" v-if="backupForm.account_ids.length > 0">
+                  <span v-for="id in backupForm.account_ids" :key="id" class="selected-tag">
+                    <span class="tag-icon" v-html="providerIcon(getAccountProvider(id))"></span>
+                    <span class="tag-text">{{ getAccountEmail(id) }}</span>
+                    <button
+                      class="tag-remove"
+                      @click.stop="toggleBackupAccount(id)"
+                      :disabled="!backupForm.enabled"
+                    >
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </span>
+                </div>
+                <!-- 占位文字 -->
+                <span class="select-placeholder" v-else>请选择需要备份的邮箱</span>
+                <!-- 下拉箭头 -->
+                <svg class="select-arrow" :class="{ open: backupDropdownOpen }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </div>
+              <!-- 下拉面板 -->
+              <transition name="dropdown">
+                <div class="select-dropdown" v-if="backupDropdownOpen">
+                  <label
+                    v-for="acc in backupAccounts"
+                    :key="acc.id"
+                    class="dropdown-item"
+                    :class="{ checked: backupForm.account_ids.includes(acc.id) }"
+                  >
+                    <input
+                      type="checkbox"
+                      :checked="backupForm.account_ids.includes(acc.id)"
+                      @change="toggleBackupAccount(acc.id)"
+                    />
+                    <span class="dropdown-icon" v-html="providerIcon(acc.provider)"></span>
+                    <span class="dropdown-email">{{ acc.email }}</span>
+                  </label>
+                </div>
+              </transition>
+            </div>
+            <span class="field-hint">仅备份选中邮箱账号的邮件，已选 {{ backupForm.account_ids.length }} 个。</span>
+          </div>
+
+          <!-- 备份位置选择（目录选择器弹窗） -->
+          <div class="field">
+            <label class="field-label">备份位置</label>
+            <div class="field-input backup-path-row">
+              <div class="backup-path-display" @click="backupForm.enabled && openBackupPathPicker()">
+                <span class="backup-path-text" :class="{ 'path-empty': !backupForm.target_dir }">
+                  {{ backupForm.target_dir || '选择目录' }}
+                </span>
+                <button class="btn-browse" :disabled="!backupForm.enabled" @click.stop="openBackupPathPicker">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2f"/></svg>
+                </button>
+              </div>
+              <button class="btn-refresh-paths" @click.stop="loadBackupAccessiblePaths" title="刷新授权目录">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                <span>刷新</span>
+              </button>
+            </div>
+            <span class="field-hint">选择邮件 .eml 文件的存储目录，必须为飞牛OS 授权目录。如无可用目录，请先在飞牛应用设置中为 FlyMail 授权目录后点击"刷新"。</span>
+          </div>
+
+          <!-- 保存按钮 -->
+          <div class="save-bar">
+            <button class="btn btn-primary btn-save" @click="saveBackupSettings" :disabled="backupSaving">
+              <svg v-if="!backupSaving" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
+              </svg>
+              <span v-if="backupSaving" class="saving-text">
+                <span class="saving-dot"></span>
+                保存中...
+              </span>
+              <span v-else>保存设置</span>
+            </button>
+            <transition name="fade">
+              <span v-if="backupSuccess" class="status-msg success">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+                保存成功
+              </span>
+            </transition>
+            <transition name="fade">
+              <span v-if="backupError" class="status-msg error">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+                </svg>
+                {{ backupError }}
+              </span>
+            </transition>
+          </div>
+        </div>
+      </transition>
+    </div>
+
     <!-- ==================== 配置教程（可折叠） ==================== -->
     <div class="guide-section">
       <!-- 折叠按钮 -->
@@ -244,12 +382,50 @@
         </div>
       </div>
     </transition>
+
+    <!-- 备份目录选择器弹窗 -->
+    <div v-if="showBackupPathPicker" class="glass-overlay" @click.self="showBackupPathPicker = false">
+      <div class="modal backup-path-picker">
+        <div class="modal-head">
+          <h4>选择备份目录</h4>
+          <button class="btn-icon-sm neu-circle" @click="showBackupPathPicker = false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="modal-nav">
+          <span v-if="backupPickerBreadcrumbs.length === 0" class="nav-item">授权目录</span>
+          <template v-for="(b, i) in backupPickerBreadcrumbs" :key="i">
+            <span class="nav-item" @click="backupPickerNavigateTo(i)">
+              {{ b.name }}<span v-if="i < backupPickerBreadcrumbs.length - 1" class="nav-sep">/</span>
+            </span>
+          </template>
+        </div>
+        <div class="modal-list">
+          <div v-if="backupPickerLoading" class="modal-empty">加载中...</div>
+          <div v-else-if="backupPickerDirs.length === 0" class="modal-empty">
+            {{ backupPickerBreadcrumbs.length === 0 ? '暂无可用授权目录，请先在飞牛应用设置中授权目录后点击"刷新"' : '此目录下无子目录' }}
+          </div>
+          <div v-else v-for="dir in backupPickerDirs" :key="dir" class="modal-dir" @click="backupPickerEnterDir(dir)">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+            <span>{{ pathBasename(dir) }}</span>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <span class="modal-path">{{ backupPickerCurrentPath || '请选择目录' }}</span>
+          <div class="modal-btns">
+            <button class="btn-save" @click="confirmBackupPathPick" :disabled="!backupPickerCurrentPath">确定</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import api from '../utils/api';
+import { providerIcon } from '../utils/provider';
+import type { BackupAccount, BackupDir } from '../types/mail';
 
 // ==================== 教程数据 ====================
 
@@ -347,6 +523,14 @@ async function loadSettingsData() {
 
 onMounted(() => {
   loadSettingsData();
+  loadBackupSettings();
+  // 监听点击事件，实现下拉面板点击外部关闭
+  document.addEventListener('click', handleBackupClickOutside);
+});
+
+// 组件卸载时清理监听，防止内存泄漏
+onUnmounted(() => {
+  document.removeEventListener('click', handleBackupClickOutside);
 });
 
 async function saveSettings() {
@@ -368,6 +552,194 @@ async function saveSettings() {
   } finally {
     saving.value = false;
   }
+}
+
+// ==================== 邮件备份设置逻辑 ====================
+
+const backupOpen = ref(false);
+const backupSaving = ref(false);
+const backupSuccess = ref(false);
+const backupError = ref('');
+const backupAccounts = ref<BackupAccount[]>([]);
+const backupAvailableDirs = ref<BackupDir[]>([]);
+// 下拉多选状态
+const backupDropdownOpen = ref(false);
+const backupSelectRef = ref<HTMLElement | null>(null);
+
+// 目录选择器状态（面包屑导航 + 逐级浏览）
+const showBackupPathPicker = ref(false);
+const backupPickerLoading = ref(false);
+const backupPickerDirs = ref<string[]>([]);
+const backupPickerBreadcrumbs = ref<{ name: string; path: string }[]>([]);
+const backupPickerCurrentPath = ref('');
+const backupAccessiblePaths = ref<string[]>([]);
+
+interface BackupForm {
+  enabled: boolean;
+  account_ids: string[];
+  target_dir: string;
+}
+
+const backupForm = ref<BackupForm>({
+  enabled: false,
+  account_ids: [],
+  target_dir: '',
+});
+
+/** 加载备份配置 */
+async function loadBackupSettings() {
+  try {
+    const data = await api.get('/backup/settings') as any;
+    backupAccounts.value = data.accounts || [];
+    backupAvailableDirs.value = data.available_dirs || [];
+    backupForm.value = {
+      enabled: !!data.enabled,
+      account_ids: [...(data.account_ids || [])],
+      target_dir: data.target_dir || '',
+    };
+  } catch (e) {
+    console.error('加载备份设置失败:', e);
+  }
+}
+
+/** 切换账号选中状态 */
+function toggleBackupAccount(accountId: string) {
+  const idx = backupForm.value.account_ids.indexOf(accountId);
+  if (idx === -1) {
+    backupForm.value.account_ids.push(accountId);
+  } else {
+    backupForm.value.account_ids.splice(idx, 1);
+  }
+}
+
+/** 根据账号 ID 获取邮箱地址（用于标签显示） */
+function getAccountEmail(accountId: string): string {
+  const acc = backupAccounts.value.find(a => a.id === accountId);
+  return acc?.email || accountId;
+}
+
+/** 根据账号 ID 获取邮箱提供商（用于标签图标） */
+function getAccountProvider(accountId: string): string {
+  const acc = backupAccounts.value.find(a => a.id === accountId);
+  return acc?.provider || '';
+}
+
+/** 点击外部关闭下拉面板 */
+function handleBackupClickOutside(e: MouseEvent) {
+  if (backupSelectRef.value && !backupSelectRef.value.contains(e.target as Node)) {
+    backupDropdownOpen.value = false;
+  }
+}
+
+/** 保存备份配置 */
+async function saveBackupSettings() {
+  backupSaving.value = true;
+  backupSuccess.value = false;
+  backupError.value = '';
+  try {
+    const res = await api.put('/backup/settings', {
+      enabled: backupForm.value.enabled,
+      account_ids: backupForm.value.account_ids,
+      target_dir: backupForm.value.target_dir,
+    }) as any;
+    // 后端可能返回 success=false（如 target_dir 不在授权目录内）
+    if (res && res.success === false) {
+      backupError.value = res.message || '保存失败';
+      setTimeout(() => { backupError.value = ''; }, 5000);
+      return;
+    }
+    backupSuccess.value = true;
+    await loadBackupSettings();
+    setTimeout(() => { backupSuccess.value = false; }, 2500);
+  } catch (e: any) {
+    backupError.value = e.message || '保存失败';
+    setTimeout(() => { backupError.value = ''; }, 5000);
+  } finally {
+    backupSaving.value = false;
+  }
+}
+
+// ==================== 备份目录选择器（面包屑+逐级浏览） ====================
+
+/** 获取路径的 basename（最后一级目录名） */
+function pathBasename(path: string): string {
+  const parts = path.replace(/\\/g, '/').split('/').filter(Boolean);
+  return parts[parts.length - 1] || path;
+}
+
+/** 加载飞牛授权目录列表（供目录选择器初始展示） */
+async function loadBackupAccessiblePaths() {
+  try {
+    const data = await api.get('/backup/accessible-paths') as any;
+    backupAccessiblePaths.value = data.paths || [];
+    // 如果选择器已打开，更新列表
+    if (showBackupPathPicker.value && backupPickerBreadcrumbs.value.length === 0) {
+      backupPickerDirs.value = backupAccessiblePaths.value;
+    }
+  } catch (e) {
+    console.error('加载授权目录失败:', e);
+    backupAccessiblePaths.value = [];
+  }
+}
+
+/** 打开目录选择器弹窗 */
+function openBackupPathPicker() {
+  backupPickerBreadcrumbs.value = [];
+  backupPickerCurrentPath.value = '';
+  backupPickerDirs.value = backupAccessiblePaths.value;
+  showBackupPathPicker.value = true;
+  // 首次打开时自动加载授权目录
+  if (backupAccessiblePaths.value.length === 0) {
+    loadBackupAccessiblePaths();
+  }
+}
+
+/** 进入下一层目录
+ *  点击授权目录（顶层）时重置面包屑，点击子目录时追加到面包屑
+ */
+async function backupPickerEnterDir(dir: string) {
+  const dirName = pathBasename(dir);
+  // 点击的是授权目录（顶层）→ 重置面包屑
+  if (backupAccessiblePaths.value.includes(dir)) {
+    backupPickerBreadcrumbs.value = [{ name: dirName, path: dir }];
+  } else {
+    backupPickerBreadcrumbs.value.push({ name: dirName, path: dir });
+  }
+  backupPickerCurrentPath.value = dir;
+  await loadBackupPickerSubDirs(dir);
+}
+
+/** 点击面包屑导航到指定层级 */
+function backupPickerNavigateTo(idx: number) {
+  backupPickerBreadcrumbs.value = backupPickerBreadcrumbs.value.slice(0, idx + 1);
+  const currentPath = backupPickerBreadcrumbs.value[idx].path;
+  backupPickerCurrentPath.value = currentPath;
+  loadBackupPickerSubDirs(currentPath);
+}
+
+/** 加载指定路径下的子目录列表（一层） */
+async function loadBackupPickerSubDirs(path: string) {
+  backupPickerLoading.value = true;
+  try {
+    const data = await api.get('/backup/accessible-paths/children', { params: { path } }) as any;
+    backupPickerDirs.value = data.dirs || [];
+    if (data.error) {
+      backupError.value = data.error;
+      setTimeout(() => { backupError.value = ''; }, 5000);
+    }
+  } catch (e) {
+    console.error('加载子目录失败:', e);
+    backupPickerDirs.value = [];
+  } finally {
+    backupPickerLoading.value = false;
+  }
+}
+
+/** 确认选择，将当前路径写回复份配置 */
+function confirmBackupPathPick() {
+  if (!backupPickerCurrentPath.value) return;
+  backupForm.value.target_dir = backupPickerCurrentPath.value;
+  showBackupPathPicker.value = false;
 }
 </script>
 
@@ -439,6 +811,454 @@ async function saveSettings() {
 .gmail-toggle-desc {
   font-size: 11px;
   color: var(--text-tertiary);
+}
+
+/* 备份卡片头部：使用蓝色渐变区别于 Gmail 代理的红色 */
+.backup-toggle {
+  background: linear-gradient(135deg, #F0F7FF 0%, #EBF3FF 100%);
+}
+
+.backup-toggle:hover {
+  background: linear-gradient(135deg, #E5F0FF 0%, #DDEBFF 100%);
+}
+
+.backup-toggle-icon {
+  background: white;
+  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.12);
+  color: var(--accent-blue, #007AFF);
+}
+
+/* 备份邮箱下拉多选 */
+.backup-multi-select {
+  position: relative;
+  max-width: 520px;
+}
+
+.backup-multi-select.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* 触发器：显示已选标签或占位文字 */
+.select-trigger {
+  min-height: 38px;
+  padding: 6px 32px 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-card);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  position: relative;
+}
+
+.select-trigger:hover {
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+.select-trigger:focus-within {
+  border-color: var(--accent-blue, #007AFF);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+}
+
+/* 已选邮箱标签容器 */
+.selected-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  width: 100%;
+}
+
+/* 单个已选标签 */
+.selected-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px 3px 8px;
+  background: rgba(0, 122, 255, 0.1);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--accent-blue, #007AFF);
+  max-width: 200px;
+}
+
+.tag-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.tag-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.tag-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  color: var(--accent-blue, #007AFF);
+  opacity: 0.6;
+  flex-shrink: 0;
+  padding: 0;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.tag-remove:hover {
+  opacity: 1;
+  background: rgba(0, 122, 255, 0.15);
+}
+
+/* 占位文字 */
+.select-placeholder {
+  color: var(--text-tertiary, #8E8E93);
+  font-size: var(--text-sm);
+  padding: 2px 4px;
+}
+
+/* 下拉箭头 */
+.select-arrow {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-tertiary, #8E8E93);
+  transition: transform 0.2s ease;
+  pointer-events: none;
+}
+
+.select-arrow.open {
+  transform: translateY(-50%) rotate(180deg);
+}
+
+/* 下拉面板 */
+.select-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 100;
+  padding: 4px;
+}
+
+/* 下拉项 */
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  transition: background 0.12s;
+}
+
+.dropdown-item:hover {
+  background: var(--bg-hover);
+}
+
+.dropdown-item.checked {
+  background: rgba(0, 122, 255, 0.06);
+}
+
+.dropdown-item input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--accent-blue, #007AFF);
+  flex-shrink: 0;
+}
+
+.dropdown-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.dropdown-email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 下拉展开/收起动画 */
+.dropdown-enter-active,
+.dropdown-leave-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.dropdown-enter-from,
+.dropdown-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+/* 备份位置行（路径显示 + 浏览按钮 + 刷新按钮） */
+.backup-path-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.backup-path-display {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-card);
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.backup-path-display:hover {
+  border-color: var(--accent-blue, #007AFF);
+}
+
+.backup-path-text {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  word-break: break-all;
+  flex: 1;
+  margin-right: 8px;
+}
+
+.backup-path-text.path-empty {
+  color: var(--text-tertiary);
+}
+
+.btn-browse {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-browse:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  color: var(--accent-blue, #007AFF);
+}
+
+.btn-browse:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-browse svg {
+  width: 16px;
+  height: 16px;
+}
+
+.btn-refresh-paths {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-refresh-paths:hover {
+  border-color: var(--accent-blue, #007AFF);
+  color: var(--accent-blue, #007AFF);
+}
+
+.btn-refresh-paths svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ==================== 目录选择器弹窗 ==================== */
+.glass-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(8px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.backup-path-picker.modal {
+  width: 90%;
+  max-width: 560px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.modal-head h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.btn-icon-sm {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-icon-sm:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.btn-icon-sm svg {
+  width: 16px;
+  height: 16px;
+}
+
+.modal-nav {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 13px;
+}
+
+.nav-item {
+  color: var(--accent-blue, #007AFF);
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.nav-item:hover {
+  opacity: 0.7;
+}
+
+.nav-sep {
+  margin: 0 4px;
+  color: var(--text-tertiary);
+}
+
+.modal-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.modal-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.modal-dir {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.modal-dir:hover {
+  background: var(--bg-hover);
+}
+
+.modal-dir svg {
+  width: 18px;
+  height: 18px;
+  color: var(--accent-blue, #007AFF);
+  flex-shrink: 0;
+}
+
+.modal-dir span {
+  font-size: 13px;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.modal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-color);
+  gap: 12px;
+}
+
+.modal-path {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-secondary);
+  word-break: break-all;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+}
+
+.modal-btns {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .card-body {

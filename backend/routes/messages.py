@@ -32,6 +32,7 @@ from db import (
     get_unified_inbox_stats,
     get_unified_inbox_filter_counts,
     get_cached_message_detail,
+    get_cached_message_flags,
     upsert_cached_messages,
     get_cached_is_read,
     batch_update_is_read,
@@ -42,6 +43,7 @@ from db import (
 )
 from deps import get_uid
 from models import Account, CachedMessage
+from providers.base_imap import BaseIMAPReceiver
 from providers.factory import ProviderFactory
 from services.token import ensure_token as _ensure_gmail_token
 from services.sync import sync_service
@@ -729,46 +731,123 @@ async def get_message_detail(
         cached = await get_cached_message_detail(account.id, int(_extract_uid(message_id)), folder)
         if cached and cached.get("body_html"):
             # 缓存命中，直接返回（但需要补充附件信息，如果 IMAP 拉取过的话缓存有 has_attachments）
-            # 如果有附件，仍需从 IMAP 获取附件列表（缓存不存附件详情）
+            # 如果有附件，优先从本地备份 .eml 获取附件列表（毫秒级），无备份再从 IMAP 获取
             if cached.get("has_attachments"):
-                # 有附件时需要从 IMAP 拉取附件列表，但正文直接用缓存
+                # 优先从本地备份获取附件列表（避免建立 IMAP 连接）
+                attachment_from_backup = False
                 try:
-                    credentials = await _ensure_gmail_token(account)
-                    receiver = ProviderFactory.get_receiver(account.provider)
-                    await receiver.connect(credentials)
-                    try:
-                        full_msg = await receiver.fetch_message_detail(_extract_uid(message_id), folder=folder)
-                    finally:
-                        await _safe_disconnect(receiver)
-                    # 用 IMAP 的附件列表替换缓存的空附件
-                    cached["attachments"] = [a.model_dump() for a in full_msg.attachments]
-                    # 更新缓存中的正文和附件信息
-                    try:
-                        cm = CachedMessage(
-                            id=make_cached_message_id(account.id, folder, _extract_uid(message_id)),
-                            account_id=account.id,
-                            user_uid=user_uid,
-                            uid=int(_extract_uid(message_id)),
-                            folder=folder,
-                            subject=cached["subject"],
-                            from_addr=cached["from_addr"],
-                            to_addr=cached["to_addr"],
-                            cc=full_msg.cc or cached.get("cc", ""),
-                            date=cached["date"],
-                            is_read=cached["is_read"],
-                            is_starred=cached["is_starred"],
-                            has_attachments=True,
-                            body_text=full_msg.body_text or cached.get("body_text", ""),
-                            body_html=full_msg.body_html or cached["body_html"],
-                        )
-                        await upsert_cached_messages([cm])
-                    except Exception as e:
-                        logger.debug("缓存附件邮件详情失败: %s", e)
+                    from db import get_archived_message_by_uid
+                    from services.backup import parse_eml_to_message, get_backup_root_async
+
+                    uid_int = int(_extract_uid(message_id))
+                    archive = await get_archived_message_by_uid(user_uid, account.id, folder, uid_int)
+                    if archive:
+                        backup_root = await get_backup_root_async(user_uid)
+                        if backup_root:
+                            eml_path = backup_root / archive["eml_path"]
+                            if eml_path.exists():
+                                raw_bytes = await asyncio.to_thread(eml_path.read_bytes)
+                                eml_msg = parse_eml_to_message(
+                                    raw_bytes, archive,
+                                    is_read=cached.get("is_read", False),
+                                    is_starred=cached.get("is_starred", False),
+                                    folder=folder, account_id=account.id,
+                                )
+                                cached["attachments"] = eml_msg["attachments"]
+                                attachment_from_backup = True
+                                logger.debug("附件列表从本地备份加载: uid=%s folder=%s", message_id, folder)
                 except Exception as e:
-                    logger.debug("附件获取失败，不影响正文查看: %s", e)
+                    logger.debug("从备份获取附件列表失败，降级到 IMAP: %s", e)
+
+                # 无备份或 .eml 不存在，从 IMAP 获取附件列表
+                if not attachment_from_backup:
+                    try:
+                        credentials = await _ensure_gmail_token(account)
+                        receiver = ProviderFactory.get_receiver(account.provider)
+                        await receiver.connect(credentials)
+                        try:
+                            full_msg = await receiver.fetch_message_detail(_extract_uid(message_id), folder=folder)
+                        finally:
+                            await _safe_disconnect(receiver)
+                        # 用 IMAP 的附件列表替换缓存的空附件
+                        cached["attachments"] = [a.model_dump() for a in full_msg.attachments]
+                        # 更新缓存中的正文和附件信息
+                        try:
+                            cm = CachedMessage(
+                                id=make_cached_message_id(account.id, folder, _extract_uid(message_id)),
+                                account_id=account.id,
+                                user_uid=user_uid,
+                                uid=int(_extract_uid(message_id)),
+                                folder=folder,
+                                subject=cached["subject"],
+                                from_addr=cached["from_addr"],
+                                to_addr=cached["to_addr"],
+                                cc=full_msg.cc or cached.get("cc", ""),
+                                date=cached["date"],
+                                is_read=cached["is_read"],
+                                is_starred=cached["is_starred"],
+                                has_attachments=True,
+                                body_text=full_msg.body_text or cached.get("body_text", ""),
+                                body_html=full_msg.body_html or cached["body_html"],
+                            )
+                            await upsert_cached_messages([cm])
+                        except Exception as e:
+                            logger.debug("缓存附件邮件详情失败: %s", e)
+                    except Exception as e:
+                        logger.debug("附件获取失败，不影响正文查看: %s", e)
             return cached
 
-        # 缓存未命中，从 IMAP 拉取
+        # 缓存未命中，先查本地备份（毫秒级），无备份再降级到 IMAP 拉取（秒级）
+        try:
+            from db import get_archived_message_by_uid
+            from services.backup import parse_eml_to_message, get_backup_root_async
+
+            uid_int = int(_extract_uid(message_id))
+            archive = await get_archived_message_by_uid(user_uid, account.id, folder, uid_int)
+            if archive:
+                backup_root = await get_backup_root_async(user_uid)
+                if backup_root:
+                    eml_path = backup_root / archive["eml_path"]
+                    if eml_path.exists():
+                        # 从 .eml 文件解析邮件详情
+                        raw_bytes = await asyncio.to_thread(eml_path.read_bytes)
+                        # 从缓存表补充 is_read/is_starred（列表同步时已存储，即使正文为空）
+                        flags = await get_cached_message_flags(account.id, uid_int, folder)
+                        is_read = flags["is_read"] if flags else False
+                        is_starred = flags["is_starred"] if flags else False
+                        message_dict = parse_eml_to_message(
+                            raw_bytes, archive,
+                            is_read=is_read, is_starred=is_starred,
+                            folder=folder, account_id=account.id,
+                        )
+                        # 异步写入缓存（下次直接命中缓存，更快）
+                        try:
+                            cm = CachedMessage(
+                                id=make_cached_message_id(account.id, folder, _extract_uid(message_id)),
+                                account_id=account.id,
+                                user_uid=user_uid,
+                                uid=uid_int,
+                                folder=folder,
+                                subject=message_dict["subject"],
+                                from_addr=message_dict["from_addr"],
+                                to_addr=message_dict["to_addr"],
+                                cc=message_dict.get("cc", ""),
+                                date=message_dict["date"],
+                                is_read=is_read,
+                                is_starred=is_starred,
+                                has_attachments=message_dict["has_attachments"],
+                                body_text=message_dict["body_text"],
+                                body_html=message_dict["body_html"],
+                            )
+                            await upsert_cached_messages([cm])
+                        except Exception as e:
+                            logger.debug("从备份写入缓存失败（不影响返回）: %s", e)
+                        logger.debug("邮件详情从本地备份加载: uid=%s folder=%s", message_id, folder)
+                        return message_dict
+        except Exception as e:
+            logger.debug("查本地备份失败，降级到 IMAP: %s", e)
+
+        # 无备份或 .eml 不存在，降级到 IMAP 拉取
         async def _fetch_detail():
             credentials = await _ensure_gmail_token(account)
             receiver = ProviderFactory.get_receiver(account.provider)
@@ -931,6 +1010,36 @@ async def download_attachment(
     account, _ = _find_account_or_error(accounts, account_id)
 
     try:
+        # 优先从本地备份 .eml 提取附件（毫秒级），无备份再降级到 IMAP（秒级）
+        try:
+            from db import get_archived_message_by_uid
+            from services.backup import extract_attachment_from_eml, get_backup_root_async
+
+            uid_int = int(_extract_uid(message_id))
+            archive = await get_archived_message_by_uid(user_uid, account.id, folder, uid_int)
+            if archive:
+                backup_root = await get_backup_root_async(user_uid)
+                if backup_root:
+                    eml_path = backup_root / archive["eml_path"]
+                    if eml_path.exists():
+                        raw_bytes = await asyncio.to_thread(eml_path.read_bytes)
+                        result = extract_attachment_from_eml(raw_bytes, part_number)
+                        if result:
+                            att_data, content_type, filename = result
+                            decoded_filename = BaseIMAPReceiver._decode_header(filename) if filename else f"attachment_{part_number}"
+                            encoded_filename = quote(decoded_filename)
+                            logger.debug("附件从本地备份提取: uid=%s part=%d", message_id, part_number)
+                            return Response(
+                                content=att_data,
+                                media_type=content_type or "application/octet-stream",
+                                headers={
+                                    "Content-Disposition": f"attachment; filename=\"attachment\"; filename*=UTF-8''{encoded_filename}",
+                                },
+                            )
+        except Exception as e:
+            logger.debug("从备份提取附件失败，降级到 IMAP: %s", e)
+
+        # 无备份或 .eml 不存在，降级到 IMAP 拉取
         credentials = await _ensure_gmail_token(account)
 
         receiver = ProviderFactory.get_receiver(account.provider)
@@ -1066,6 +1175,13 @@ async def delete_message(
             await delete_cached_message(account.id, int(_extract_uid(message_id)), folder)
         except Exception as e:
             logger.debug("删除缓存邮件失败: %s", e)
+        # 标记归档记录为"服务器已删除"（保留 .eml 文件，仅更新状态）
+        # 必须在删除缓存后立即标记，否则后续同步无法检测到删除（cached_count 已减1，不触发删除检测）
+        try:
+            from services.backup import mark_archived_as_deleted
+            await mark_archived_as_deleted(account.id, folder, [int(_extract_uid(message_id))])
+        except Exception as e:
+            logger.debug("标记归档删除失败: %s", e)
         # 立即更新 folder_stats：从缓存 COUNT 获取真实剩余数
         try:
             cached_remaining = await get_cached_count(account.id, folder)
@@ -1079,6 +1195,15 @@ async def delete_message(
         await sync_service.notify_message_state_changed(
             account.id, action, [message_id], folder=folder, user_uid=user_uid
         )
+        # 后台同步 Trash 文件夹，归档被移动的邮件（仅当邮件被移动到 Trash，而非彻底删除时）
+        if action == "move" and trash_folder:
+            async def _sync_trash_bg():
+                try:
+                    from services.mail_cache import sync_folder_to_cache
+                    await sync_folder_to_cache(account, trash_folder, force_full=False)
+                except Exception as e:
+                    logger.debug("删除后同步Trash文件夹失败: %s", e)
+            create_background_task(_sync_trash_bg(), name="sync_trash_after_delete")
         return {"success": True}
     except Exception as e:
         logger.error("删除邮件失败: %s", e)
@@ -1133,12 +1258,20 @@ async def batch_delete_messages(request: Request, body: BatchDeleteRequest = Bod
                 logger.warning("批量删除后更新文件夹统计失败: account=%s, error=%s", account.email, e)
 
         create_background_task(_update_folder_stats_bg(), name="update_folder_stats_after_batch_delete")
+        # 提取待删除的 UID 列表（在 try 之前定义，确保后续 mark_archived_as_deleted 能稳定引用）
+        uids_to_delete = [int(_extract_uid(mid)) for mid in body.message_ids]
         # 同步删除缓存中的邮件（批量，单次数据库操作替代逐条删除的 N+1 问题）
         try:
-            uids_to_delete = [int(_extract_uid(mid)) for mid in body.message_ids]
             deleted_count = await batch_delete_cached_messages(account.id, uids_to_delete, body.folder)
         except Exception as e:
             logger.error("批量删除缓存清理失败: account=%s, error=%s", account.email, e)
+        # 标记归档记录为"服务器已删除"（批量，保留 .eml 文件）
+        # 必须在删除缓存后立即标记，否则后续同步无法检测到删除
+        try:
+            from services.backup import mark_archived_as_deleted
+            await mark_archived_as_deleted(account.id, body.folder, uids_to_delete)
+        except Exception as e:
+            logger.debug("批量标记归档删除失败: %s", e)
 
         # 立即更新 folder_stats：从缓存 COUNT 获取真实剩余数
         # 不用手动减 N，因为 COUNT 一定和缓存一致，避免 _verify 误判触发重同步
@@ -1157,6 +1290,15 @@ async def batch_delete_messages(request: Request, body: BatchDeleteRequest = Bod
         await sync_service.notify_message_state_changed(
             account.id, action, body.message_ids, folder=body.folder, user_uid=user_uid
         )
+        # 后台同步 Trash 文件夹，归档被批量移动的邮件
+        if action == "move" and trash_folder:
+            async def _sync_trash_batch_bg():
+                try:
+                    from services.mail_cache import sync_folder_to_cache
+                    await sync_folder_to_cache(account, trash_folder, force_full=False)
+                except Exception as e:
+                    logger.debug("批量删除后同步Trash文件夹失败: %s", e)
+            create_background_task(_sync_trash_batch_bg(), name="sync_trash_after_batch_delete")
         return {"success": True, "deleted": len(body.message_ids)}
     except Exception as e:
         logger.error("批量删除邮件失败: account=%s, error=%s", account.email, e)

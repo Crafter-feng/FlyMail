@@ -21,7 +21,7 @@ cloudflare/
 pages/
 
 # 项目文档与 CI（本地使用，不上传 GitHub）
-README.md
+README旧.md
 doc/
 .github/
 

@@ -48,7 +48,7 @@ class Notification(BaseModel):
     folder: str                # 文件夹
     is_read: bool = False      # 是否已读
     created_at: float = 0.0    # 通知创建时间戳
-    type: str = "new_mail"     # 通知类型：new_mail / schedule_success / schedule_failed
+    type: str = "new_mail"     # 通知类型：new_mail / schedule_success / schedule_failed / backup_success / backup_failed
     message: str = ""          # 通知描述文本（定时发送结果等）
 
 

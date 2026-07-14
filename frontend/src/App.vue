@@ -53,6 +53,41 @@
             </transition>
           </div>
 
+          <!-- 备份菜单：可展开（结构同邮件菜单） -->
+          <div v-else-if="item.key === 'backup'" class="nav-group">
+            <button
+              class="nav-item"
+              :class="{ active: currentView === 'backup' }"
+              @click="toggleBackupMenu"
+            >
+              <span class="nav-icon" v-html="item.icon"></span>
+              <span class="nav-label">{{ item.label }}</span>
+              <svg class="nav-chevron" :class="{ expanded: backupMenuOpen }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </button>
+            <!-- 展开的备份文件夹列表 -->
+            <transition name="slide">
+              <div v-if="backupMenuOpen && currentView === 'backup'" class="nav-sub">
+                <button
+                  v-for="f in backupStore.folders"
+                  :key="f.folder"
+                  class="nav-sub-item"
+                  :class="{ active: backupStore.currentFolder === f.folder }"
+                  @click="selectBackupFolder(f.folder)"
+                >
+                  <span class="folder-dot" :class="backupStore.getFolderClass(f.folder)"></span>
+                  <span class="folder-label">{{ backupStore.folderDisplayName(f.folder) }}</span>
+                  <span v-if="f.count" class="folder-count">{{ f.count }}</span>
+                </button>
+                <!-- 无文件夹时的占位提示 -->
+                <div v-if="backupStore.folders.length === 0" class="nav-sub-empty">
+                  暂无备份邮件
+                </div>
+              </div>
+            </transition>
+          </div>
+
           <!-- 其他菜单项 -->
           <button
             v-else
@@ -104,6 +139,7 @@
           <ComposeEmail v-else-if="currentView === 'compose'" @sent="onMailSent" @discard="onMailDiscard" />
           <AccountList v-else-if="currentView === 'accounts'" />
           <ContactList v-else-if="currentView === 'contacts'" />
+          <Backup v-else-if="currentView === 'backup'" />
           <Settings v-else-if="currentView === 'settings'" />
           <About v-else-if="currentView === 'about'" />
         </transition>
@@ -145,6 +181,10 @@
           <button class="other-menu-item" @click="currentView = 'contacts'; showOtherMenu = false">
             <span class="other-menu-icon" v-html="mobileNavIcons.contacts"></span>
             <span>联系人</span>
+          </button>
+          <button class="other-menu-item" @click="currentView = 'backup'; showOtherMenu = false">
+            <span class="other-menu-icon" v-html="mobileNavIcons.backup"></span>
+            <span>备份</span>
           </button>
           <button class="other-menu-item" @click="currentView = 'settings'; showOtherMenu = false">
             <span class="other-menu-icon" v-html="mobileNavIcons.settings"></span>
@@ -192,6 +232,10 @@
                 <svg v-if="n.type === 'schedule_success'" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#34C759" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                 <!-- 定时发送失败：红色叉号图标 -->
                 <svg v-else-if="n.type === 'schedule_failed'" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FF3B30" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                <!-- 备份成功：绿色归档图标 -->
+                <svg v-else-if="n.type === 'backup_success'" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#34C759" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v13H3V8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+                <!-- 备份失败：红色归档图标 -->
+                <svg v-else-if="n.type === 'backup_failed'" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FF3B30" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v13H3V8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
                 <!-- 腾讯邮箱图标（企鹅） -->
                 <svg v-else-if="n.provider === 'qq'" width="22" height="22" viewBox="0 0 1024 1024"><path d="M211.101867 363.776c-14.933333 66.56-7.466667 133.12 7.466666 192.256 14.933333 51.754667-7.466667 103.509333-52.309333 133.077333-67.285333 36.949333-149.461333-14.805333-156.970667-81.322666C-57.954133 260.266667 255.944533-57.642667 614.728533 8.874667c-209.28 22.186667-366.250667 162.688-403.626666 354.901333z" fill="#FFDC04"/><path d="M532.4672 844.373333c59.818667-22.186667 119.594667-59.136 164.437333-103.509333 37.376-36.992 97.152-44.373333 141.994667-14.805333 67.285333 36.992 67.285333 133.12 7.509333 177.493333-269.098667 229.162667-702.549333 118.272-822.186666-221.866667 112.128 162.688 321.408 221.866667 508.245333 162.688z" fill="#E03A22"/><path d="M794.056533 326.826667a425.173333 425.173333 0 0 0-171.861333-88.746667c-52.352-14.762667-89.728-59.136-89.728-110.933333 0-73.898667 82.218667-125.653333 149.504-96.085334 336.341333 118.314667 455.893333 539.733333 216.746667 813.312 89.685333-177.493333 37.376-391.850667-104.661334-517.546666z" fill="#27AA3A"/><path d="M652.104533 489.472c0-14.805333 0-29.568-7.509333-36.949333 0-7.424 0-7.424-7.466667-14.805334 0-73.941333-44.842667-133.12-127.061333-133.12-82.218667 0-127.061333 59.178667-127.061333 133.12 0 7.381333-7.466667 7.381333-7.466667 14.805334-7.466667 14.762667-7.466667 22.186667-7.466667 29.568v7.381333c-14.933333 7.381333-29.909333 29.568-37.376 51.754667-14.933333 36.949333-14.933333 73.941333-7.466666 73.941333 7.466667 7.381333 22.4-7.381333 37.333333-22.186667 0 22.186667 14.933333 44.373333 29.909333 59.136-14.933333 0-29.866667 14.805333-29.866666 29.568 0 22.186667 29.866667 36.992 74.709333 36.992 37.376 0 67.285333-14.805333 74.752-29.568h7.466667c7.466667 14.762667 37.376 29.568 74.752 29.568s74.752-14.805333 74.752-36.992c0-14.762667-14.933333-22.186667-29.909334-29.568 14.933333-14.762667 29.866667-29.568 37.376-51.754666 14.933333 22.186667 29.866667 29.568 37.376 22.186666 14.933333-7.381333 7.466667-36.949333-7.466667-73.941333-7.466667-22.186667-22.4-44.373333-37.376-51.754667z" fill="#12B7F5"/></svg>
                 <svg v-else-if="n.provider === 'gmail'" width="22" height="22" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
@@ -206,11 +250,11 @@
               </div>
               <div class="notif-body">
                 <div class="notif-title-row">
-                  <span class="notif-provider-name">{{ n.type === 'new_mail' ? providerName(n.provider) : (n.type === 'schedule_success' ? '发送成功' : '发送失败') }}</span>
+                  <span class="notif-provider-name">{{ n.type === 'new_mail' ? providerName(n.provider) : (n.type === 'schedule_success' ? '发送成功' : n.type === 'schedule_failed' ? '发送失败' : n.type === 'backup_success' ? '备份成功' : '备份失败') }}</span>
                   <span class="notif-dot" v-if="!n.read"></span>
                   <span class="notif-time">{{ formatNotifTime(n.time) }}</span>
                 </div>
-                <div class="notif-desc">{{ n.type === 'new_mail' ? (n.email + ' 收到新邮件') : n.message }}</div>
+                <div class="notif-desc"><span class="notif-desc-text">{{ n.type === 'new_mail' ? (n.email + ' 收到新邮件') : n.message }}</span></div>
               </div>
             </div>
           </div>
@@ -262,8 +306,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useMailStore } from './stores/mail';
+import { useBackupStore } from './stores/backup';
 import { useUIStore } from './stores/ui';
 import { storeToRefs } from 'pinia';
 import { providerName } from './utils/provider';
@@ -275,19 +320,22 @@ import Settings from './views/Settings.vue';
 import About from './views/About.vue';
 import ComposeEmail from './views/ComposeEmail.vue';
 import ContactList from './views/ContactList.vue';
+import Backup from './views/Backup.vue';
 
 const mailStore = useMailStore();
+const backupStore = useBackupStore();
 const uiStore = useUIStore();
 const { user } = storeToRefs(mailStore);
 const version = import.meta.env.VITE_APP_VERSION || '0.0.0';
 // 从 sessionStorage 恢复上次浏览的页面，刷新后不会回到默认页
 const currentView = ref(sessionStorage.getItem('flymail_view') || 'unified');
 const mailMenuOpen = ref(true);
+const backupMenuOpen = ref(true);
 const showNotificationPanel = ref(false);
 // 移动端"其他"菜单弹出控制
 const showOtherMenu = ref(false);
 // "其他"菜单激活状态：当前视图为写信/设置/关于时高亮
-const isOtherActive = computed(() => ['compose', 'contacts', 'settings', 'about'].includes(currentView.value));
+const isOtherActive = computed(() => ['compose', 'contacts', 'backup', 'settings', 'about'].includes(currentView.value));
 
 // 移动端底部导航图标（独立于桌面端 navItems，避免耦合）
 const mobileNavIcons = {
@@ -299,6 +347,7 @@ const mobileNavIcons = {
   settings: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
   about: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
   contacts: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+  backup: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
 };
 
 const { connect: connectGlobalWs, disconnect: disconnectGlobalWs } = useWebSocket(handleGlobalWsMessage);
@@ -333,6 +382,12 @@ function handleGlobalWsMessage(data: any) {
     if (data.type === 'schedule_success' && (!data.account_id || data.account_id === mailStore.currentAccountId)) {
       mailStore.loadFolderCounts();
     }
+  } else if (data.type === 'backup_success' || data.type === 'backup_failed') {
+    // 备份结果通知（仅手动点击"立即备份"时推送）
+    mailStore.addNotification(
+      data.provider || '', data.email || '', '', data.notification_id,
+      data.type, data.message || ''
+    );
   } else if (data.type === 'connection_status') {
     const account = mailStore.accounts.find((a: any) => a.id === data.account_id);
     if (data.status === 'reauth_needed' && data.account_id) {
@@ -409,6 +464,12 @@ const navItems = [
     icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
   },
   {
+    key: 'backup',
+    label: '备份',
+    shortLabel: '备份',
+    icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+  },
+  {
     key: 'settings',
     label: '设置',
     shortLabel: '设置',
@@ -462,6 +523,23 @@ function toggleMailMenu() {
 /** 选择文件夹 */
 function selectFolder(path: string) {
   mailStore.setFolder(path);
+}
+
+/** 切换备份菜单展开/收起（逻辑同邮件菜单） */
+function toggleBackupMenu() {
+  if (currentView.value !== 'backup') {
+    currentView.value = 'backup';
+    backupMenuOpen.value = true;
+    // 进入备份页时加载文件夹列表
+    backupStore.loadFolders();
+  } else {
+    backupMenuOpen.value = !backupMenuOpen.value;
+  }
+}
+
+/** 选择备份文件夹 */
+function selectBackupFolder(folder: string) {
+  backupStore.setFolder(folder);
 }
 
 /** 获取文件夹显示的数量
@@ -618,11 +696,55 @@ function cleanOAuthParams() {
   }
 }
 
-// 切换到邮件页时自动展开菜单
+// 切换到邮件/备份页时自动展开菜单
 watch(currentView, (v) => {
   if (v === 'mail') mailMenuOpen.value = true;
+  if (v === 'backup') {
+    backupMenuOpen.value = true;
+    backupStore.loadFolders();
+  }
   // 保存当前页面到 sessionStorage，刷新后可恢复
   sessionStorage.setItem('flymail_view', v);
+});
+
+// ==================== 通知文本溢出检测（跑马灯效果） ====================
+// 当通知描述文本超出容器宽度时，添加 marquee class 触发 CSS 滚动动画
+// 滚动距离通过 CSS 变量 --marquee-distance 动态设置（像素值）
+function applyMarqueeToNotifications() {
+  // 仅在通知面板打开时检测，避免无意义的 DOM 查询
+  if (!showNotificationPanel.value) return;
+  // 查询所有通知描述容器
+  const descEls = document.querySelectorAll<HTMLElement>('.notif-desc');
+  descEls.forEach((descEl) => {
+    const textEl = descEl.querySelector<HTMLElement>('.notif-desc-text');
+    if (!textEl) return;
+    // 移除旧 class，重新测量（通知内容可能变化）
+    textEl.classList.remove('marquee');
+    // 强制重排以获取真实 scrollWidth
+    void textEl.offsetWidth;
+    // 文字宽度超过容器宽度才需要滚动
+    const overflow = descEl.scrollWidth - descEl.clientWidth;
+    if (overflow > 0) {
+      // 设置 CSS 变量供 @keyframes 使用（多滚动 8px 留出视觉余量）
+      textEl.style.setProperty('--marquee-distance', `${overflow + 8}px`);
+      textEl.classList.add('marquee');
+    }
+  });
+}
+
+// 监听通知列表变化：新通知到来时重新检测溢出
+watch(
+  () => mailStore.notifications.length,
+  () => {
+    nextTick(applyMarqueeToNotifications);
+  }
+);
+
+// 监听面板打开：打开时检测所有已存在通知的溢出
+watch(showNotificationPanel, (open) => {
+  if (open) {
+    nextTick(applyMarqueeToNotifications);
+  }
 });
 </script>
 
@@ -855,6 +977,14 @@ watch(currentView, (v) => {
 .nav-sub-item.active .folder-count {
   background: rgba(0, 122, 255, 0.12);
   color: var(--color-accent);
+}
+
+/* 备份文件夹列表为空时的占位提示 */
+.nav-sub-empty {
+  padding: 12px 16px;
+  color: var(--text-tertiary, #8E8E93);
+  font-size: 12px;
+  text-align: center;
 }
 
 /* 子菜单展开/收起动画 */
@@ -1438,8 +1568,27 @@ watch(currentView, (v) => {
   color: var(--text-secondary);
   line-height: 1.4;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 通知描述文本：默认不滚动 */
+.notif-desc-text {
+  display: inline-block;
+  /* 默认滚动距离为 0，由 JS 动态设置 */
+  --marquee-distance: 0px;
+}
+
+/* 文本溢出时由 JS 添加 marquee class 触发滚动 */
+.notif-desc-text.marquee {
+  animation: notif-marquee 12s linear infinite;
+}
+
+/* marquee 动画：开头停顿2秒 → 滚动 → 末尾停顿2秒 → 循环
+ * 滚动距离使用 CSS 变量 --marquee-distance（像素值，由 JS 检测溢出后设置）
+ * 这样可以精确表达"文字宽度-容器宽度"的位移 */
+@keyframes notif-marquee {
+  0%, 15% { transform: translateX(0); }                              /* 开头停顿约2秒 */
+  85%, 100% { transform: translateX(calc(-1 * var(--marquee-distance))); }  /* 滚动到末尾后停顿 */
 }
 
 /* 空状态 */

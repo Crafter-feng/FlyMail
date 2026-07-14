@@ -242,6 +242,65 @@ class MailSyncService:
         logger.info("推送定时发送通知: %s, %s", notif_type, subject)
         await self._broadcast(message, user_uid)
 
+    async def notify_backup_result(
+        self,
+        user_uid: str,
+        account_id: str,
+        provider: str,
+        email: str,
+        success: bool,
+        archived_count: int = 0,
+        error_msg: str = "",
+    ):
+        """备份结果通知：推送 WebSocket + 持久化到数据库
+
+        仅手动点击"立即备份"时调用，自动同步归档不发通知。
+        success=True 推送 backup_success 类型，success=False 推送 backup_failed 类型。
+        归档 0 封时消息为"已是最新"，归档 >0 封时消息含归档数量。
+        """
+        notif_type = "backup_success" if success else "backup_failed"
+        if success:
+            if archived_count > 0:
+                message_text = f"{email} 备份成功，归档 {archived_count} 封邮件"
+            else:
+                message_text = f"{email} 已是最新，无需备份"
+        else:
+            message_text = f"{email} 备份失败"
+            if error_msg:
+                message_text += f"（{error_msg}）"
+
+        # 持久化通知到数据库
+        notification_id = str(uuid.uuid4())
+        try:
+            from models import Notification
+            notification = Notification(
+                id=notification_id,
+                user_uid=user_uid or "default",
+                account_id=account_id,
+                provider=provider,
+                email=email,
+                folder="",
+                is_read=False,
+                created_at=time.time(),
+                type=notif_type,
+                message=message_text,
+            )
+            await create_notification(notification)
+        except Exception as e:
+            logger.warning("备份通知持久化失败: %s", e)
+
+        # 广播 WebSocket 消息
+        message = json.dumps({
+            "type": notif_type,
+            "notification_id": notification_id,
+            "account_id": account_id,
+            "provider": provider,
+            "email": email,
+            "message": message_text,
+        })
+        logger.info("推送备份通知: %s, %s", notif_type, email)
+        await self._broadcast(message, user_uid)
+
     # ==================== 实时监听管理 ====================
 
     async def _start_all_idle(self):

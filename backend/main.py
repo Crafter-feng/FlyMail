@@ -37,6 +37,7 @@ from version import VERSION
 # 路由模块
 from routes.accounts import router as accounts_router
 from routes.auth import oauth_callback_app
+from routes.backup import router as backup_router
 from routes.compose import router as compose_router
 from routes.contacts import router as contacts_router
 from routes.folders import router as folders_router
@@ -153,6 +154,7 @@ app.add_middleware(StripPrefixMiddleware)
 # ==================== 路由注册 ====================
 
 app.include_router(accounts_router)
+app.include_router(backup_router)
 app.include_router(compose_router)
 app.include_router(contacts_router)
 app.include_router(folders_router)

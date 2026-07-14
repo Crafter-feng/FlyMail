@@ -20,6 +20,42 @@ export function extractEmails(addrStr: string): string[] {
   return emails || []
 }
 
+/** 地址项：名字 + 邮箱 */
+export interface AddressItem {
+  name: string   // 显示名（无名字时用邮箱前缀）
+  email: string  // 纯邮箱地址（小写）
+}
+
+/**
+ * 解析地址字符串为 {name, email} 数组
+ * 支持格式：
+ *   "张三" <a@qq.com>, "李四" <b@qq.com>
+ *   张三 <a@qq.com>, b@qq.com
+ *   a@qq.com, b@qq.com
+ *
+ * 用于邮件详情页展示收件人/抄送人列表
+ */
+export function parseAddressList(addrStr: string): AddressItem[] {
+  if (!addrStr || !addrStr.trim()) return []
+  const result: AddressItem[] = []
+  // 正则匹配两种格式：1. "Name" <email>  2. 纯 email
+  const regex = /(?:"?([^"<]*?)"?\s*<([^>]+)>)|([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g
+  let match: RegExpExecArray | null
+  while ((match = regex.exec(addrStr)) !== null) {
+    if (match[2]) {
+      // "Name" <email> 格式：优先用名字，无名字时用邮箱前缀
+      const name = match[1].trim().replace(/"/g, '')
+      const email = match[2].trim().toLowerCase()
+      result.push({ name: name || email.split('@')[0], email })
+    } else if (match[3]) {
+      // 纯 email 格式：名字用邮箱前缀
+      const email = match[3].toLowerCase()
+      result.push({ name: email.split('@')[0], email })
+    }
+  }
+  return result
+}
+
 /** 获取头像首字母 */
 export function getInitial(addr: string): string {
   const name = extractName(addr)
@@ -57,14 +93,38 @@ export function formatDetailDate(dateStr: string): string {
   if (!dateStr) return ''
   try {
     const d = new Date(dateStr)
-    return d.toLocaleString('zh-CN', {
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', second: '2-digit',
-      hour12: false
-    })
+    const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    const weekday = weekdays[d.getDay()]
+    const hour = String(d.getHours()).padStart(2, '0')
+    const minute = String(d.getMinutes()).padStart(2, '0')
+    return `${year}年${month}月${day}日 (${weekday}) ${hour}:${minute}`
   } catch {
     return dateStr
   }
+}
+
+/**
+ * 将地址列表格式化为可读字符串
+ * - 有姓名："姓名 <邮箱>"
+ * - 无姓名：直接显示邮箱
+ * - 多个地址用"；"分隔
+ *
+ * 用于详情页收件人/抄送人行的纯文本展示
+ */
+export function formatAddressList(addrStr: string): string {
+  const list = parseAddressList(addrStr)
+  if (list.length === 0) return ''
+  return list.map((a) => {
+    // 如果 name 就是邮箱前缀且与 email 前缀一致，直接显示完整邮箱
+    // 否则显示"姓名 <邮箱>"
+    if (a.name === a.email.split('@')[0]) {
+      return a.email
+    }
+    return `${a.name} <${a.email}>`
+  }).join('；')
 }
 
 /** 格式化文件大小 */

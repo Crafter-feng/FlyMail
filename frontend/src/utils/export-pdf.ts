@@ -26,7 +26,7 @@
  * └─────────────────────────────┘
  */
 import { sanitizeHtml } from './sanitize'
-import { extractName } from './mail-helpers'
+import { formatDetailDate, formatAddressList } from './mail-helpers'
 import type { Message } from '../types/mail'
 
 /**
@@ -177,23 +177,18 @@ function buildFullHtml(msg: Message, headerHtml: string, bodyHtml: string): stri
  * 包含主题（大标题）和元数据表格（发件人/收件人/抄送/日期）
  */
 function buildMailHeader(msg: Message): string {
-  const fromName = extractName(msg.from_addr)
-  const fromEmail = msg.from_addr || ''
-  // 发件人显示：名称 + <邮箱>（若名称和邮箱相同则只显示一个）
-  const fromDisplay = fromEmail !== fromName
-    ? `${escapeHtml(fromName)} &lt;${escapeHtml(fromEmail)}&gt;`
-    : escapeHtml(fromName)
-
-  const toDate = msg.to_addr || ''
-  const cc = msg.cc || ''
-  const date = msg.date || ''
+  // 使用 formatAddressList 格式化地址，formatDetailDate 格式化时间
+  const fromDisplay = escapeHtml(formatAddressList(msg.from_addr))
+  const toDisplay = msg.to_addr ? escapeHtml(formatAddressList(msg.to_addr)) : ''
+  const ccDisplay = msg.cc ? escapeHtml(formatAddressList(msg.cc)) : ''
+  const dateDisplay = msg.date ? escapeHtml(formatDetailDate(msg.date)) : ''
 
   // 构建元数据行（跳过空字段）
   const metaRows = [
     metaRow('发件人', fromDisplay),
-    toDate ? metaRow('收件人', escapeHtml(toDate)) : '',
-    cc ? metaRow('抄  送', escapeHtml(cc)) : '',
-    date ? metaRow('日  期', escapeHtml(date)) : '',
+    toDisplay ? metaRow('收件人', toDisplay) : '',
+    ccDisplay ? metaRow('抄  送', ccDisplay) : '',
+    dateDisplay ? metaRow('日  期', dateDisplay) : '',
   ].filter(Boolean).join('')
 
   return `
