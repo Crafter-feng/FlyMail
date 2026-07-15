@@ -4,7 +4,7 @@
 
 **专为多邮箱用户打造的自托管邮件客户端**
 
-[![Version](https://img.shields.io/badge/version-1.0.5-blue?style=flat-square)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.0.6-blue?style=flat-square)](VERSION)
 [![License](https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.11+-yellow?style=flat-square&logo=python)](https://www.python.org/)
 [![Vue](https://img.shields.io/badge/Vue-3-brightgreen?style=flat-square&logo=vue.js)](https://vuejs.org/)

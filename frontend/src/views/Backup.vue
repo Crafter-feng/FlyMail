@@ -230,13 +230,13 @@
             <div class="skeleton-line" style="width: 60%"></div>
           </div>
           <template v-else-if="detailData">
-            <iframe
-              v-if="detailData.body_html"
-              :srcdoc="sanitizedHtml"
-              class="body-iframe"
-              sandbox="allow-same-origin"
-            ></iframe>
-            <pre v-else-if="detailData.body_text" class="body-text">{{ detailData.body_text }}</pre>
+            <!-- 与 MailList 一致：同页 v-html 渲染，避免飞牛 WebView 对 srcdoc iframe 空白 -->
+            <div
+              v-if="detailData.body_html || detailData.body_text"
+              class="detail-content"
+              v-html="sanitizeHtml(detailData.body_html) || detailData.body_text"
+              @click="handleMailLinkClick"
+            ></div>
             <div v-else class="body-empty">（无正文内容）</div>
 
             <!-- 附件列表 -->
@@ -268,7 +268,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import api from '../utils/api';
-import { sanitizeHtml } from '../utils/sanitize';
+import { sanitizeHtml, handleMailLinkClick } from '../utils/sanitize';
 import { providerIcon } from '../utils/provider';
 import { useBackupStore } from '../stores/backup';
 import { useUIStore } from '../stores/ui';
@@ -311,12 +311,6 @@ const showMobileFilters = ref(false);  // 移动端筛选下拉
 const printing = ref(false);
 
 // ==================== 计算属性 ====================
-
-/** 对 HTML 正文进行消毒，防止 XSS */
-const sanitizedHtml = computed(() => {
-  if (!detailData.value?.body_html) return '';
-  return sanitizeHtml(detailData.value.body_html);
-});
 
 /** 当前文件夹显示名（用于筛选栏左侧"文件夹名 · X封"） */
 const currentFolderName = computed(() => {
@@ -1098,22 +1092,28 @@ function downloadAttachment(att: BackupAttachment) {
   100% { background-position: -200% 0; }
 }
 
-/* 正文 iframe */
-.body-iframe {
-  width: 100%;
-  min-height: 400px;
-  border: none;
-  border-radius: 8px;
-  background: white;
+/* 正文：与 MailList .detail-content 一致，同页渲染避免 iframe 兼容问题 */
+.detail-content {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-primary, #1d1d1f);
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
-.body-text {
-  font-family: inherit;
-  font-size: 13px;
-  white-space: pre-wrap;
-  word-break: break-word;
-  color: var(--text-primary, #1d1d1f);
-  margin: 0;
+.detail-content :deep(img) {
+  max-width: 100%;
+  height: auto;
+}
+
+.detail-content :deep(a) {
+  color: #0071e3;
+  word-break: break-all;
+}
+
+.detail-content :deep(table) {
+  max-width: 100%;
+  border-collapse: collapse;
 }
 
 .body-empty {

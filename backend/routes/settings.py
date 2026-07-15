@@ -3,6 +3,10 @@
 OAuth 授权已迁移到 Cloudflare Broker，本地不再保存客户端密钥。
 本模块只保存 Gmail 网络代理和用户级聚合收件箱设置。
 """
+import asyncio
+import time
+from urllib.parse import urlparse
+
 from fastapi import APIRouter, Request
 
 from services.settings import async_load_settings, async_save_settings
@@ -11,6 +15,8 @@ from schemas import (
     SettingsUpdateRequest,
     SettingsUpdateResponse,
     UnifiedSettingsRequest,
+    ProxyTestRequest,
+    ProxyTestResponse,
 )
 
 router = APIRouter(tags=["设置"])
@@ -42,6 +48,83 @@ async def reset_gmail_idle_connections():
         pass
 
 
+def _test_proxy_to_google_sync(proxy_url: str) -> dict:
+    """同步探测：经 HTTP 代理 CONNECT 到 Google 相关主机，验证代理可用。
+
+    策略（与 Gmail 实际链路一致）：
+    1. 优先 CONNECT imap.gmail.com:993（收件主路径）
+    2. 失败再试 www.google.com:443（通用 Google 可达性兜底）
+
+    在后台线程中执行，避免阻塞事件循环。
+    """
+    from providers.proxy import create_proxy_socket
+
+    proxy_url = (proxy_url or "").strip()
+    if not proxy_url:
+        return {
+            "success": False,
+            "message": "请填写代理地址",
+            "latency_ms": 0,
+            "target": "",
+        }
+
+    parsed = urlparse(proxy_url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return {
+            "success": False,
+            "message": "代理地址格式无效，请使用 http://host:port 或 http://user:pass@host:port",
+            "latency_ms": 0,
+            "target": "",
+        }
+
+    # 探测目标：与 Gmail 使用场景对齐
+    targets = [
+        ("imap.gmail.com", 993),
+        ("www.google.com", 443),
+    ]
+    last_error = ""
+    started = time.perf_counter()
+
+    for host, port in targets:
+        sock = None
+        try:
+            # 单目标超时 12 秒，避免长时间卡住 UI
+            sock = create_proxy_socket(proxy_url, host, port, timeout=12)
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            return {
+                "success": True,
+                "message": f"代理连通正常（经 {host}:{port}，{latency_ms}ms）",
+                "latency_ms": latency_ms,
+                "target": f"{host}:{port}",
+            }
+        except Exception as e:
+            last_error = str(e) or e.__class__.__name__
+        finally:
+            if sock is not None:
+                try:
+                    sock.close()
+                except Exception:
+                    pass
+
+    latency_ms = int((time.perf_counter() - started) * 1000)
+    # 面向用户的简短中文说明
+    hint = last_error
+    if "CONNECT" in last_error or "200" in last_error:
+        hint = f"代理拒绝隧道（{last_error}）"
+    elif "timed out" in last_error.lower() or "timeout" in last_error.lower():
+        hint = "连接超时，请检查代理地址、端口与网络"
+    elif "解析" in last_error or "gaierror" in last_error.lower() or "getaddrinfo" in last_error.lower():
+        hint = "无法解析代理主机名"
+    elif "refused" in last_error.lower() or "积极拒绝" in last_error:
+        hint = "无法连接代理服务，请确认代理已启动"
+    return {
+        "success": False,
+        "message": f"代理无法连通 Google：{hint}",
+        "latency_ms": latency_ms,
+        "target": "",
+    }
+
+
 # ==================== 设置接口 ====================
 
 
@@ -64,6 +147,20 @@ async def update_settings(body: SettingsUpdateRequest):
     await reset_gmail_idle_connections()
 
     return {"success": True, "message": "设置已保存"}
+
+
+@router.post(
+    "/api/settings/proxy/test",
+    response_model=ProxyTestResponse,
+    summary="测试 Gmail HTTP 代理连通性",
+)
+async def test_gmail_proxy(body: ProxyTestRequest):
+    """测试用户填写的 HTTP 代理是否能连通 Google（IMAP/HTTPS）。
+
+    不要求先保存设置；使用请求体中的 proxy_url 即时探测。
+    """
+    result = await asyncio.to_thread(_test_proxy_to_google_sync, body.proxy_url)
+    return result
 
 
 # ==================== 聚合收件箱设置 ====================

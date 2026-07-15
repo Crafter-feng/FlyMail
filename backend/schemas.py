@@ -30,6 +30,19 @@ class SettingsUpdateRequest(BaseModel):
     gmail_proxy_url: Optional[str] = Field(default=None, max_length=500, description="HTTP 代理地址")
 
 
+class ProxyTestRequest(BaseModel):
+    """测试 Gmail HTTP 代理连通性请求。"""
+    proxy_url: str = Field(..., max_length=500, description="HTTP 代理地址，如 http://127.0.0.1:7890")
+
+
+class ProxyTestResponse(BaseModel):
+    """测试 Gmail HTTP 代理连通性响应。"""
+    success: bool = Field(description="代理是否可用")
+    message: str = Field(description="结果说明（中文）")
+    latency_ms: int = Field(default=0, description="探测耗时毫秒")
+    target: str = Field(default="", description="实际探测的目标主机:端口")
+
+
 class AuthUrlResponse(BaseModel):
     auth_url: str = Field(description="第三方授权页面URL，前端跳转到此地址")
     provider: str = Field(description="邮箱平台类型")

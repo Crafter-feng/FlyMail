@@ -1491,20 +1491,71 @@ async def upsert_contact_by_email(user_uid: str, name: str, email: str) -> tuple
     return (await create_contact(user_uid, name, [email]), True)
 
 
+def _normalize_contact_email(email: str) -> str:
+    """规范化联系人统计用的邮箱地址（去空白、转小写）。"""
+    return (email or "").strip().lower()
+
+
+def _like_escape(value: str) -> str:
+    """转义 SQL LIKE 通配符，避免邮箱中的 %/_ 被当作通配符。"""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _address_field_contains_email(field: str, email_norm: str) -> bool:
+    """判断邮件地址字段是否精确包含指定邮箱。
+
+    使用标准库 email.utils.getaddresses 解析 RFC 地址列表，兼容：
+    - 纯地址：user@domain.com
+    - 显示名：Name <user@domain.com>
+    - 多人列表：a@x.com, Name <b@y.com>
+    不会因子串包含而误匹配（如 bob@x.com 不匹配 alicebob@x.com / bob@x.com.cn）。
+    """
+    if not field or not email_norm:
+        return False
+    from email.utils import getaddresses
+
+    for _, addr in getaddresses([field]):
+        if addr and addr.strip().lower() == email_norm:
+            return True
+    return False
+
+
 async def get_contact_stats(user_uid: str, email: str) -> dict:
-    """统计与某邮箱地址的往来邮件数量和最近联系时间。"""
+    """统计与某邮箱地址的往来邮件数量和最近联系时间。
+
+    S5 修复：废弃 LIKE %email% 子串匹配，改为「候选预筛 + RFC 精确解析」：
+    1. 先用转义后的 LIKE 缩小候选行（性能）
+    2. 再用 getaddresses 做完整邮箱 token 精确匹配（正确性）
+    """
+    email_norm = _normalize_contact_email(email)
+    if not email_norm or "@" not in email_norm:
+        return {"count": 0, "last_date": ""}
+
     db = await get_db()
-    like = f"%{email}%"
+    # 预筛：仍用包含查询缩小范围，但通配符已转义；最终结果以精确解析为准
+    like = f"%{_like_escape(email_norm)}%"
     cursor = await db.execute(
-        """SELECT COUNT(*) as count, MAX(date) as last_date
+        """SELECT date, from_addr, to_addr
            FROM cached_messages
-           WHERE user_uid = ? AND (from_addr LIKE ? OR to_addr LIKE ?)""",
+           WHERE user_uid = ?
+             AND (from_addr LIKE ? ESCAPE '\\' OR to_addr LIKE ? ESCAPE '\\')""",
         (user_uid, like, like),
     )
-    row = await cursor.fetchone()
-    if row and row[0] > 0:
-        return {"count": row[0], "last_date": row[1] or ""}
-    return {"count": 0, "last_date": ""}
+    rows = await cursor.fetchall()
+
+    count = 0
+    last_date = ""
+    for row in rows:
+        date_val = row[0] or ""
+        from_addr = row[1] or ""
+        to_addr = row[2] or ""
+        if _address_field_contains_email(from_addr, email_norm) or _address_field_contains_email(to_addr, email_norm):
+            count += 1
+            # date 存 ISO 或可比较字符串时，字典序近似时间序；取最大作为最近联系
+            if date_val and date_val > last_date:
+                last_date = date_val
+
+    return {"count": count, "last_date": last_date}
 
 
 # ==================== 邮件归档 CRUD ====================

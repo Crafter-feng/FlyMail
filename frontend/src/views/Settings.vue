@@ -32,14 +32,41 @@
               </label>
               <span>启用 HTTP 代理</span>
             </label>
-            <div class="field-input" v-if="form.gmail_proxy_enabled">
+            <div class="field-input proxy-url-row" v-if="form.gmail_proxy_enabled">
               <input
                 v-model="form.gmail_proxy_url"
                 class="input"
                 type="text"
                 placeholder="http://127.0.0.1:7890"
               />
+              <!-- 样式对齐「关于」页检测更新：圆角描边按钮，测试经代理到 Google 的连通性 -->
+              <button
+                type="button"
+                class="check-proxy-btn"
+                :disabled="proxyTesting || !form.gmail_proxy_url.trim()"
+                :title="proxyTesting ? '正在测试...' : '测试代理与 Google 的连通性'"
+                @click="testProxy"
+              >
+                <svg v-if="!proxyTesting" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                </svg>
+                <svg v-else class="spin-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 12a9 9 0 11-6.219-8.56"/>
+                </svg>
+                <span>{{ proxyTesting ? '测试中' : '测试连通' }}</span>
+              </button>
             </div>
+            <transition name="fade">
+              <span v-if="proxyTestMsg" class="status-msg" :class="proxyTestOk ? 'success' : 'error'" style="margin-top: 8px; display: inline-flex;">
+                <svg v-if="proxyTestOk" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+                <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+                </svg>
+                {{ proxyTestMsg }}
+              </span>
+            </transition>
             <span class="field-hint">网络受限时启用，对 Gmail IMAP 收件、SMTP 发件、通过 Cloudflare Broker 刷新 token 生效。支持认证：http://user:pass@host:port</span>
           </div>
 
@@ -508,6 +535,10 @@ const form = ref<SettingsForm>({
 const saving = ref(false);
 const saveSuccess = ref(false);
 const saveError = ref('');
+// 代理连通性测试状态（与「关于」页检测更新交互一致）
+const proxyTesting = ref(false);
+const proxyTestMsg = ref('');
+const proxyTestOk = ref(false);
 
 async function loadSettingsData() {
   try {
@@ -518,6 +549,31 @@ async function loadSettingsData() {
     };
   } catch (e) {
     console.error('加载设置失败:', e);
+  }
+}
+
+/** 测试当前输入框中的 HTTP 代理是否能连通 Google（无需先保存） */
+async function testProxy() {
+  if (proxyTesting.value) return;
+  const url = form.value.gmail_proxy_url.trim();
+  if (!url) {
+    proxyTestOk.value = false;
+    proxyTestMsg.value = '请先填写代理地址';
+    return;
+  }
+  proxyTesting.value = true;
+  proxyTestMsg.value = '';
+  try {
+    // 超时拉长：代理探测可能需要两次 CONNECT（IMAP + HTTPS）
+    const data = await api.post('/settings/proxy/test', { proxy_url: url }, { timeout: 30000 }) as any;
+    proxyTestOk.value = !!data.success;
+    proxyTestMsg.value = data.message || (data.success ? '代理可用' : '代理不可用');
+  } catch (e: any) {
+    proxyTestOk.value = false;
+    const detail = e?.response?.data?.error || e?.response?.data?.detail || e?.message;
+    proxyTestMsg.value = detail ? `测试失败：${detail}` : '测试失败，请检查网络或后端服务';
+  } finally {
+    proxyTesting.value = false;
   }
 }
 
@@ -1284,6 +1340,57 @@ function confirmBackupPathPick() {
 .field-input {
   position: relative;
   max-width: 520px;
+}
+
+/* 代理地址 + 测试按钮同一行 */
+.proxy-url-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 640px;
+}
+
+.proxy-url-row .input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 对齐「关于」页 .check-update-btn：圆角描边、悬停变强调色 */
+.check-proxy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-full, 20px);
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.check-proxy-btn:hover:not(:disabled) {
+  background: var(--color-accent);
+  color: #fff;
+  border-color: var(--color-accent);
+}
+
+.check-proxy-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.spin-icon {
+  animation: proxy-spin 0.8s linear infinite;
+}
+
+@keyframes proxy-spin {
+  to { transform: rotate(360deg); }
 }
 
 .field-hint {
