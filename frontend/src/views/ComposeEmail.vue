@@ -300,16 +300,32 @@
   <!-- 附件区域（在编辑器下方、表单底部） -->
   <div class="attachments-section">
   <div class="attachments-header">
-  <!-- 附件来源菜单：本机 / NAS -->
+  <!-- 附件来源菜单：本机 / NAS（菜单向上弹出，避免贴底被裁切） -->
   <div class="upload-menu-wrap">
-  <button type="button" class="upload-btn" @click="showUploadMenu = !showUploadMenu">
+  <button
+  type="button"
+  class="upload-btn"
+  ref="uploadBtnRef"
+  @click="toggleUploadMenu"
+  >
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
   附件
   </button>
-  <div v-if="showUploadMenu" class="upload-menu">
-  <button type="button" class="upload-menu-item" @click="pickLocalFiles">从本机上传</button>
-  <button type="button" class="upload-menu-item" @click="pickNasFiles">从NAS添加</button>
+  <!-- Teleport 到 body，避免父级 overflow 裁切菜单 -->
+  <Teleport to="body">
+  <div v-if="showUploadMenu" class="upload-menu-overlay" @click="showUploadMenu = false">
+  <div class="upload-menu" :style="uploadMenuStyle" @click.stop>
+  <button type="button" class="upload-menu-item" @click="pickLocalFiles">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+  从本机上传
+  </button>
+  <button type="button" class="upload-menu-item" @click="pickNasFiles">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+  从NAS添加
+  </button>
   </div>
+  </div>
+  </Teleport>
   <input ref="localFileInput" type="file" multiple @change="handleFileSelect" class="hidden-input" />
   </div>
   <span v-if="attachments.length" class="attachments-count">
@@ -484,6 +500,9 @@ const attachments = ref<{ filename: string; size: number; path: string; source?:
 const isDragging = ref(false);
 const showUploadMenu = ref(false);
 const localFileInput = ref<HTMLInputElement | null>(null);
+const uploadBtnRef = ref<HTMLButtonElement | null>(null);
+/** Teleport 菜单定位样式（优先在按钮上方弹出） */
+const uploadMenuStyle = ref<Record<string, string>>({});
 const showNasFilePicker = ref(false);
 
 // 各邮箱平台附件大小限制（MB），与后端 services/attachments.py 保持一致
@@ -1032,6 +1051,48 @@ function discardMail() {
 }
 
 // 附件处理
+/** 切换附件菜单：优先在按钮上方弹出，贴顶则改为下方；Teleport 到 body 避免被裁切 */
+function toggleUploadMenu() {
+  if (showUploadMenu.value) {
+    showUploadMenu.value = false;
+    return;
+  }
+  const btn = uploadBtnRef.value;
+  if (!btn) {
+    showUploadMenu.value = true;
+    return;
+  }
+  const rect = btn.getBoundingClientRect();
+  const menuWidth = 180;
+  const menuHeight = 96;
+  const gap = 8;
+  // 横向：贴按钮左侧，必要时右移避免出屏
+  let left = rect.left;
+  if (left + menuWidth > window.innerWidth - 8) {
+    left = Math.max(8, window.innerWidth - menuWidth - 8);
+  }
+  // 纵向：上方空间足够则向上弹，否则向下
+  const preferAbove = rect.top >= menuHeight + gap + 8;
+  if (preferAbove) {
+    uploadMenuStyle.value = {
+      position: 'fixed',
+      left: `${left}px`,
+      top: `${rect.top - gap}px`,
+      transform: 'translateY(-100%)',
+      width: `${menuWidth}px`,
+    };
+  } else {
+    uploadMenuStyle.value = {
+      position: 'fixed',
+      left: `${left}px`,
+      top: `${rect.bottom + gap}px`,
+      transform: 'none',
+      width: `${menuWidth}px`,
+    };
+  }
+  showUploadMenu.value = true;
+}
+
 function pickLocalFiles() {
   showUploadMenu.value = false;
   localFileInput.value?.click();
@@ -1428,36 +1489,50 @@ function formatSize(bytes: number): string {
   border-color: var(--accent-blue, #007AFF);
 }
 
-/* 附件来源下拉菜单 */
+/* 附件来源菜单：Teleport 到 body，固定定位，优先在按钮上方 */
 .upload-menu-wrap {
   position: relative;
 }
 
+/* 全屏透明遮罩：点击空白关闭菜单 */
+.upload-menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2100;
+  background: transparent;
+}
+
 .upload-menu {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  margin-top: 4px;
   min-width: 160px;
-  background: var(--bg-card);
+  background: var(--bg-card, #fff);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
-  z-index: 20;
-  padding: 4px;
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.16);
+  z-index: 2101;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .upload-menu-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   text-align: left;
-  padding: 8px 12px;
+  padding: 10px 12px;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   background: transparent;
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
+}
+
+.upload-menu-item svg {
+  flex-shrink: 0;
+  color: var(--accent-blue, #007AFF);
 }
 
 .upload-menu-item:hover {
