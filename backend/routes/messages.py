@@ -48,7 +48,15 @@ from providers.factory import ProviderFactory
 from services.token import ensure_token as _ensure_gmail_token
 from services.sync import sync_service
 from services.mail_cache import sync_folder_to_cache, sync_missing_messages
-from services.attachments import build_upload_path, resolve_user_attachment_path, MAX_SINGLE_FILE_SIZE
+from services.attachments import (
+    build_upload_path,
+    resolve_user_attachment_path,
+    resolve_compose_attachment_path,
+    is_temp_upload_path,
+    sanitize_attachment_filename,
+    unique_target_file,
+    MAX_SINGLE_FILE_SIZE,
+)
 from services.idle_manager import idle_manager, poll_manager
 from utils.logger import get_logger
 from utils.tasks import create_background_task
@@ -68,6 +76,9 @@ from schemas import (
     PrefetchMessagesResponse,
     StatusResponse,
     UploadAttachmentResponse,
+    RegisterNasAttachmentRequest,
+    SaveAttachmentToNasRequest,
+    SaveAttachmentToNasResponse,
 )
 # 从 _helpers 复用共享辅助函数，避免与 routes/folders.py 重复定义
 from routes._helpers import (
@@ -1028,6 +1039,85 @@ async def prefetch_messages(request: Request, body: PrefetchMessagesRequest = Bo
 # ==================== 附件接口 ====================
 
 
+async def _fetch_attachment_bytes(
+    user_uid: str,
+    account: Account,
+    message_id: str,
+    folder: str,
+    part_number: int,
+) -> tuple[bytes, str, str]:
+    """获取附件二进制数据（优先本地备份 .eml，降级 IMAP）。
+
+    Returns:
+        (data, content_type, filename)
+    """
+    # 优先从本地备份 .eml 提取附件（毫秒级）
+    try:
+        from db import get_archived_message_by_uid
+        from services.backup import (
+            extract_attachment_from_eml,
+            get_backup_root_async,
+            resolve_eml_under_backup_root,
+        )
+
+        uid_int = int(_extract_uid(message_id))
+        archive = await get_archived_message_by_uid(user_uid, account.id, folder, uid_int)
+        if archive:
+            backup_root = await get_backup_root_async(user_uid)
+            if backup_root:
+                eml_path = resolve_eml_under_backup_root(
+                    backup_root, archive.get("eml_path")
+                )
+                if eml_path and eml_path.exists():
+                    raw_bytes = await asyncio.to_thread(eml_path.read_bytes)
+                    result = extract_attachment_from_eml(raw_bytes, part_number)
+                    if result:
+                        att_data, content_type, filename = result
+                        decoded_filename = (
+                            BaseIMAPReceiver._decode_header(filename)
+                            if filename
+                            else f"attachment_{part_number}"
+                        )
+                        logger.debug(
+                            "附件从本地备份提取: uid=%s part=%d", message_id, part_number
+                        )
+                        return (
+                            att_data,
+                            content_type or "application/octet-stream",
+                            decoded_filename,
+                        )
+    except Exception as e:
+        logger.debug("从备份提取附件失败，降级到 IMAP: %s", e)
+
+    # 无备份或 .eml 不存在，降级到 IMAP 拉取
+    credentials = await _ensure_gmail_token(account)
+    receiver = ProviderFactory.get_receiver(account.provider)
+    await receiver.connect(credentials)
+    try:
+        message = await receiver.fetch_message_detail(
+            _extract_uid(message_id), folder=folder
+        )
+        attachment = None
+        for att in message.attachments:
+            if att.part_number == part_number:
+                attachment = att
+                break
+        if not attachment:
+            raise AppError(404, "附件不存在")
+        att_data = await receiver.fetch_attachment_data(
+            _extract_uid(message_id), folder, part_number
+        )
+    finally:
+        await _safe_disconnect(receiver)
+
+    if not att_data:
+        raise AppError(500, "附件数据获取失败")
+
+    filename = attachment.filename or f"attachment_{part_number}"
+    content_type = attachment.content_type or "application/octet-stream"
+    return att_data, content_type, filename
+
+
 @router.get("/api/messages/{message_id}/attachments/{part_number}", response_class=FileResponse, summary="下载邮件附件")
 async def download_attachment(
     message_id: str = FastAPIPath(description="邮件唯一ID"),
@@ -1036,7 +1126,7 @@ async def download_attachment(
     account_id: str = Query(default="", description="指定账号ID"),
     folder: str = Query(default="INBOX", description="邮件所在文件夹"),
 ):
-    """下载邮件附件的二进制数据"""
+    """下载邮件附件的二进制数据（浏览器本机下载）"""
     user_uid = await get_uid(request)
     accounts = await get_accounts(user_uid)
 
@@ -1046,84 +1136,100 @@ async def download_attachment(
     account, _ = _find_account_or_error(accounts, account_id)
 
     try:
-        # 优先从本地备份 .eml 提取附件（毫秒级），无备份再降级到 IMAP（秒级）
-        try:
-            from db import get_archived_message_by_uid
-            from services.backup import (
-                extract_attachment_from_eml,
-                get_backup_root_async,
-                resolve_eml_under_backup_root,
-            )
-
-            uid_int = int(_extract_uid(message_id))
-            archive = await get_archived_message_by_uid(user_uid, account.id, folder, uid_int)
-            if archive:
-                backup_root = await get_backup_root_async(user_uid)
-                if backup_root:
-                    eml_path = resolve_eml_under_backup_root(
-                        backup_root, archive.get("eml_path")
-                    )
-                    if eml_path and eml_path.exists():
-                        raw_bytes = await asyncio.to_thread(eml_path.read_bytes)
-                        result = extract_attachment_from_eml(raw_bytes, part_number)
-                        if result:
-                            att_data, content_type, filename = result
-                            decoded_filename = BaseIMAPReceiver._decode_header(filename) if filename else f"attachment_{part_number}"
-                            encoded_filename = quote(decoded_filename)
-                            logger.debug("附件从本地备份提取: uid=%s part=%d", message_id, part_number)
-                            return Response(
-                                content=att_data,
-                                media_type=content_type or "application/octet-stream",
-                                headers={
-                                    "Content-Disposition": f"attachment; filename=\"attachment\"; filename*=UTF-8''{encoded_filename}",
-                                },
-                            )
-        except Exception as e:
-            logger.debug("从备份提取附件失败，降级到 IMAP: %s", e)
-
-        # 无备份或 .eml 不存在，降级到 IMAP 拉取
-        credentials = await _ensure_gmail_token(account)
-
-        receiver = ProviderFactory.get_receiver(account.provider)
-        await receiver.connect(credentials)
-        try:
-            # 先获取邮件详情，找到附件信息
-            message = await receiver.fetch_message_detail(_extract_uid(message_id), folder=folder)
-
-            # 查找对应 part_number 的附件
-            attachment = None
-            for att in message.attachments:
-                if att.part_number == part_number:
-                    attachment = att
-                    break
-
-            if not attachment:
-                raise AppError(404, "附件不存在")
-
-            # 通过 IMAP BODY.PEEK[part_number] 获取附件二进制数据
-            att_data = await receiver.fetch_attachment_data(_extract_uid(message_id), folder, part_number)
-        finally:
-            await _safe_disconnect(receiver)
-
-        if not att_data:
-            raise AppError(500, "附件数据获取失败")
-
-        # 返回附件二进制流
-        filename = attachment.filename or f"attachment_{part_number}"
+        att_data, content_type, filename = await _fetch_attachment_bytes(
+            user_uid, account, message_id, folder, part_number
+        )
         encoded_filename = quote(filename)
         return Response(
             content=att_data,
-            media_type=attachment.content_type or "application/octet-stream",
+            media_type=content_type,
             headers={
                 "Content-Disposition": f"attachment; filename=\"attachment\"; filename*=UTF-8''{encoded_filename}",
             },
         )
+    except AppError:
+        raise
     except Exception as e:
         logger.error("下载附件失败: %s", e)
         error_msg = str(e)
         if _is_outlook_connection_error(account, error_msg):
             raise AppError(503, _OUTLOOK_RECONNECTING_MSG)
         raise AppError(500, error_msg)
+
+
+@router.post(
+    "/api/messages/{message_id}/attachments/{part_number}/save-to-nas",
+    response_model=SaveAttachmentToNasResponse,
+    summary="将邮件附件保存到 NAS 授权目录",
+)
+async def save_attachment_to_nas(
+    message_id: str = FastAPIPath(description="邮件唯一ID"),
+    part_number: int = FastAPIPath(description="附件part编号"),
+    request: Request = None,
+    body: SaveAttachmentToNasRequest = Body(...),
+):
+    """下载附件并写入飞牛授权目录（不走浏览器本机下载）。"""
+    import os
+    from pathlib import Path
+    from utils.paths import is_path_authorized
+
+    user_uid = await get_uid(request)
+    accounts = await get_accounts(user_uid)
+    if not accounts:
+        raise AppError(404, "No account found")
+
+    account, _ = _find_account_or_error(accounts, body.account_id)
+    target_dir_raw = (body.target_dir or "").strip()
+    if not target_dir_raw:
+        raise AppError(400, "请指定目标目录")
+    if not is_path_authorized(target_dir_raw):
+        raise AppError(403, "目标目录不在飞牛授权目录内")
+
+    target_dir = Path(target_dir_raw).resolve()
+    if not target_dir.is_dir():
+        raise AppError(400, "目标路径不是有效目录")
+    if not os.access(target_dir, os.W_OK):
+        raise AppError(403, "目标目录不可写")
+
+    try:
+        att_data, _content_type, default_name = await _fetch_attachment_bytes(
+            user_uid, account, message_id, body.folder or "INBOX", part_number
+        )
+    except AppError:
+        raise
+    except Exception as e:
+        logger.error("获取附件失败(存NAS): %s", e)
+        if _is_outlook_connection_error(account, str(e)):
+            raise AppError(503, _OUTLOOK_RECONNECTING_MSG)
+        raise AppError(500, str(e))
+
+    # 文件名：优先 body.filename，否则用附件原名
+    raw_name = (body.filename or "").strip() or default_name or f"attachment_{part_number}"
+    dest = unique_target_file(target_dir, raw_name)
+
+    # 再次确认落在授权目录内（防路径穿越）
+    if not is_path_authorized(str(dest)):
+        raise AppError(403, "目标文件路径不在授权范围内")
+
+    def _write():
+        dest.write_bytes(att_data)
+
+    try:
+        await asyncio.to_thread(_write)
+    except OSError as e:
+        logger.error("写入 NAS 失败: %s", e)
+        raise AppError(500, f"写入失败: {e}")
+
+    logger.info(
+        "附件已保存到 NAS: user=%s dest=%s size=%d",
+        user_uid, dest, len(att_data),
+    )
+    return {
+        "success": True,
+        "path": str(dest),
+        "filename": dest.name,
+        "size": len(att_data),
+    }
 
 
 @router.post("/api/messages/upload-attachment", response_model=UploadAttachmentResponse, summary="上传附件")
@@ -1143,14 +1249,53 @@ async def upload_attachment(request: Request, file: UploadFile = File(...)):
         "filename": safe_filename,
         "size": len(content),
         "path": str(file_path),
+        "source": "local",
+    }
+
+
+@router.post(
+    "/api/messages/register-nas-attachment",
+    response_model=UploadAttachmentResponse,
+    summary="从 NAS 授权目录引用附件",
+)
+async def register_nas_attachment(request: Request, body: RegisterNasAttachmentRequest = Body(...)):
+    """校验 NAS 路径并返回与本机上传一致的元数据；不复制文件。"""
+    user_uid = await get_uid(request)
+    file_path = resolve_compose_attachment_path(user_uid, body.path)
+
+    # 必须是授权目录路径（不能误把临时目录当 NAS 登记）
+    if is_temp_upload_path(user_uid, str(file_path)):
+        raise AppError(400, "请使用本机上传接口处理临时附件")
+
+    size = file_path.stat().st_size
+    if size > MAX_SINGLE_FILE_SIZE:
+        raise AppError(413, f"单个文件不能超过 {MAX_SINGLE_FILE_SIZE // (1024 * 1024)}MB")
+
+    safe_name = sanitize_attachment_filename(file_path.name)
+    return {
+        "filename": safe_name,
+        "size": size,
+        "path": str(file_path),
+        "source": "nas",
     }
 
 
 @router.delete("/api/messages/upload-attachment", response_model=StatusResponse, summary="删除已上传附件")
 async def delete_attachment(request: Request, path: str = Query(description="附件文件路径")):
-    """删除已上传的临时附件文件"""
+    """删除已上传的临时附件文件。
+
+    NAS 授权目录内的引用：仅取消关联，不删除源文件（返回 success）。
+    """
     try:
         user_uid = await get_uid(request)
+        # NAS 引用：不 unlink 源文件
+        if not is_temp_upload_path(user_uid, path):
+            from utils.paths import is_path_authorized
+
+            if is_path_authorized(path):
+                return {"success": True}
+            raise AppError(403, "无权访问该附件")
+
         file_path = resolve_user_attachment_path(user_uid, path)
         if file_path.exists() and file_path.is_file():
             file_path.unlink()

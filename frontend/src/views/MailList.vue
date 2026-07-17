@@ -324,7 +324,7 @@
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
   <span>附件 ({{ selectedMessage.attachments.length }})</span>
   </div>
-  <div class="attachment-item" v-for="att in selectedMessage.attachments" :key="att.part_number" @click="downloadAttachment(att)">
+  <div class="attachment-item" v-for="att in selectedMessage.attachments" :key="att.part_number" @click="openAttachmentMenu(att, $event)">
   <div class="att-icon">
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
   </div>
@@ -340,6 +340,20 @@
   </div>
   </div>
   </div>
+
+  <!-- 附件下载菜单：本机 / NAS（必须在根级，不能塞进 draggable #item） -->
+  <div v-if="attMenuVisible" class="att-menu-overlay" @click="attMenuVisible = false">
+  <div class="att-menu" :style="attMenuStyle" @click.stop>
+  <button type="button" class="att-menu-item" @click="downloadAttachmentLocal">下载到本机</button>
+  <button type="button" class="att-menu-item" @click="downloadAttachmentNas">下载到NAS</button>
+  </div>
+  </div>
+  <NasPathPicker
+  v-model="showNasDirPicker"
+  mode="dir"
+  title="选择保存目录"
+  @confirm="onNasDirConfirmed"
+  />
 </template>
 
 <script setup lang="ts">
@@ -350,11 +364,12 @@ import { useUIStore } from '../stores/ui';
 import api from '../utils/api';
 import { providerIcon } from '../utils/provider';
 import { sanitizeHtml, handleMailLinkClick } from '../utils/sanitize';
-import { extractName, extractEmails, getInitial, getAvatarColor, formatDate, formatDetailDate, formatFileSize, downloadAttachment as downloadAttachmentFile, getFolderCount, formatAddressList } from '../utils/mail-helpers';
+import { extractName, extractEmails, getInitial, getAvatarColor, formatDate, formatDetailDate, formatFileSize, downloadAttachment as downloadAttachmentFile, saveAttachmentToNas, getFolderCount, formatAddressList } from '../utils/mail-helpers';
 import { exportMailToPDF } from '../utils/export-pdf';
 import type { Attachment, Message } from '../types/mail';
 import { useWebSocket } from '../composables/useWebSocket';
 import { buildReplyDraft, buildForwardDraft } from '../composables/useReplyForward';
+import NasPathPicker from '../components/NasPathPicker.vue';
 import { useSelectMode } from '../composables/useSelectMode';
 import { useConfirmAction } from '../composables/useConfirmAction';
 import { useContacts } from '../composables/useContacts';
@@ -999,17 +1014,58 @@ function prefetchVisibleMessages() {
   }).catch(() => {});
 }
 
-/** 下载附件（适配器：模板只传 Attachment，补全消息上下文后调用公共工具函数） */
-function downloadAttachment(att: Attachment) {
+/** 附件下载菜单：本机 / NAS */
+const attMenuVisible = ref(false);
+const attMenuStyle = ref<Record<string, string>>({});
+const attMenuTarget = ref<Attachment | null>(null);
+const showNasDirPicker = ref(false);
+
+function openAttachmentMenu(att: Attachment, event: MouseEvent) {
+  attMenuTarget.value = att;
+  const x = Math.min(event.clientX, window.innerWidth - 220);
+  const y = Math.min(event.clientY, window.innerHeight - 100);
+  attMenuStyle.value = { left: `${x}px`, top: `${y}px` };
+  attMenuVisible.value = true;
+}
+
+function downloadAttachmentLocal() {
+  const att = attMenuTarget.value;
+  attMenuVisible.value = false;
+  if (!att) return;
   const msg = selectedMessage.value;
   if (!msg) return;
   downloadAttachmentFile({
-  messageId: msg.id,
-  accountId: msg.account_id || mailStore.currentAccountId || '',
-  folder: msg.folder || 'INBOX',
-  partNumber: att.part_number,
-  filename: att.filename || 'attachment',
+    messageId: msg.id,
+    accountId: msg.account_id || mailStore.currentAccountId || '',
+    folder: msg.folder || 'INBOX',
+    partNumber: att.part_number,
+    filename: att.filename || 'attachment',
   });
+}
+
+function downloadAttachmentNas() {
+  attMenuVisible.value = false;
+  if (!attMenuTarget.value) return;
+  showNasDirPicker.value = true;
+}
+
+async function onNasDirConfirmed(targetDir: string) {
+  const att = attMenuTarget.value;
+  const msg = selectedMessage.value;
+  if (!att || !msg) return;
+  try {
+    const result = await saveAttachmentToNas({
+      messageId: msg.id,
+      accountId: msg.account_id || mailStore.currentAccountId || '',
+      folder: msg.folder || 'INBOX',
+      partNumber: att.part_number,
+      targetDir,
+      filename: att.filename || '',
+    });
+    uiStore.success(`已保存到 NAS：${result.filename}`);
+  } catch (e: any) {
+    uiStore.error(e?.response?.data?.detail || e?.message || '保存到 NAS 失败');
+  }
 }
 </script>
 
@@ -1017,7 +1073,9 @@ function downloadAttachment(att: Attachment) {
 .mail-view {
   display: flex;
   flex-direction: column;
+  flex: 1;
   height: 100%;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -2162,5 +2220,41 @@ function downloadAttachment(att: Attachment) {
 @keyframes skeleton-loading {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+
+/* 附件下载菜单 */
+.att-menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+}
+.att-menu {
+  position: fixed;
+  min-width: 200px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.att-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+.att-menu-item:hover {
+  background: var(--bg-hover, rgba(0, 0, 0, 0.05));
 }
 </style>

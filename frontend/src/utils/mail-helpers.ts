@@ -1,5 +1,7 @@
 /** 邮件相关公共工具函数 */
 
+import api from './api'
+
 // 期望输入格式："张三 <zhangsan@qq.com>" 或纯 "zhangsan@qq.com"
 /** 从邮箱地址提取显示名 */
 export function extractName(addr: string): string {
@@ -135,7 +137,7 @@ export function formatFileSize(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
-/** 下载附件 */
+/** 下载附件到本机（浏览器原生下载） */
 export function downloadAttachment(params: {
   messageId: string
   accountId: string
@@ -154,6 +156,28 @@ export function downloadAttachment(params: {
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
+}
+
+/** 将附件保存到 NAS 授权目录（服务端写盘） */
+export async function saveAttachmentToNas(params: {
+  messageId: string
+  accountId: string
+  folder: string
+  partNumber: number
+  targetDir: string
+  filename?: string
+}): Promise<{ success: boolean; path: string; filename: string; size: number }> {
+  const { messageId, accountId, folder, partNumber, targetDir, filename } = params
+  const data = await api.post(
+    `/messages/${messageId}/attachments/${partNumber}/save-to-nas`,
+    {
+      account_id: accountId,
+      folder,
+      target_dir: targetDir,
+      filename: filename || '',
+    },
+  ) as any
+  return data
 }
 
 /** 获取文件夹显示数量（收件箱显示未读数，其他显示总数） */

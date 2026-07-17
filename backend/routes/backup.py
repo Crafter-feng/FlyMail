@@ -106,15 +106,20 @@ async def get_accessible_paths_api():
     return {"paths": paths}
 
 
-@router.get("/api/backup/accessible-paths/children", summary="列出授权目录下的子目录")
-async def list_accessible_children_api(path: str = Query(default="", description="要列出的目录路径，为空时返回所有授权目录")):
-    """列出指定授权目录下的子目录（一层）
+@router.get("/api/backup/accessible-paths/children", summary="列出授权目录下的子目录/文件")
+async def list_accessible_children_api(
+    path: str = Query(default="", description="要列出的目录路径，为空时返回所有授权目录"),
+    include_files: bool = Query(default=False, description="是否同时列出文件（写信从 NAS 选附件时为 true）"),
+):
+    """列出指定授权目录下的子目录（一层）；可选同时列文件。
 
     前端选择备份存储路径时，先选授权目录，再逐级浏览子目录，
     最终路径 = 授权目录 + 选中的子目录路径。
+    附件 NAS 通道：include_files=true 时额外返回 files。
 
     Args:
         path: 要列出的目录路径，为空时返回所有授权目录
+        include_files: 是否列出文件
     """
     from pathlib import Path
     from utils.paths import get_accessible_paths, is_path_authorized
@@ -122,33 +127,44 @@ async def list_accessible_children_api(path: str = Query(default="", description
     # path 为空：返回所有授权目录
     if not path:
         paths = await asyncio.to_thread(get_accessible_paths)
-        return {"dirs": paths}
+        return {"dirs": paths, "files": []}
 
     # 校验 path 在授权范围内
     accessible = await asyncio.to_thread(get_accessible_paths)
     if not is_path_authorized(path, accessible):
         logger.warning("路径不在授权范围内: path=%s", path)
-        return {"dirs": [], "error": "路径不在授权范围内"}
+        return {"dirs": [], "files": [], "error": "路径不在授权范围内"}
 
-    # 列出子目录（仅一层，跳过文件和代理对路径）
-    def _list_subdirs(p: str):
-        result = []
+    # 列出子目录（仅一层）；可选列文件
+    def _list_children(p: str, with_files: bool):
+        dirs = []
+        files = []
         try:
             for entry in sorted(Path(p).iterdir(), key=lambda x: x.name.lower()):
+                path_str = str(entry)
+                # 跳过包含代理对的路径（非 UTF-8 文件名），避免 JSON 序列化失败
+                try:
+                    path_str.encode("utf-8")
+                except UnicodeEncodeError:
+                    continue
                 if entry.is_dir():
-                    path_str = str(entry)
-                    # 跳过包含代理对的路径（非 UTF-8 文件名），避免 JSON 序列化失败
+                    dirs.append(path_str)
+                elif with_files and entry.is_file():
                     try:
-                        path_str.encode('utf-8')
-                    except UnicodeEncodeError:
-                        continue
-                    result.append(path_str)
+                        size = entry.stat().st_size
+                    except OSError:
+                        size = 0
+                    files.append({
+                        "name": entry.name,
+                        "path": path_str,
+                        "size": size,
+                    })
         except (PermissionError, FileNotFoundError, OSError) as e:
             logger.warning("列出子目录失败: path=%s, error=%s", p, e)
-        return result
+        return dirs, files
 
-    dirs = await asyncio.to_thread(_list_subdirs, path)
-    return {"dirs": dirs}
+    dirs, files = await asyncio.to_thread(_list_children, path, include_files)
+    return {"dirs": dirs, "files": files}
 
 @router.post("/api/backup/run", summary="手动触发备份")
 async def trigger_backup(

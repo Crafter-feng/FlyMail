@@ -133,15 +133,19 @@
   </header>
 
   <main class="content">
-  <transition name="fade" mode="out-in">
-  <UnifiedInbox v-if="currentView === 'unified'" />
-  <MailList v-else-if="currentView === 'mail'" />
-  <ComposeEmail v-else-if="currentView === 'compose'" @sent="onMailSent" @discard="onMailDiscard" />
-  <AccountList v-else-if="currentView === 'accounts'" />
-  <ContactList v-else-if="currentView === 'contacts'" />
-  <Backup v-else-if="currentView === 'backup'" />
-  <Settings v-else-if="currentView === 'settings'" />
-  <About v-else-if="currentView === 'about'" />
+  <!--
+    不用 mode="out-in"：离开动画未完成时进入组件不会挂载，易导致右侧空白；
+    给每个视图加 key，确保切换时彻底销毁/重建，避免节点复用异常。
+  -->
+  <transition name="fade">
+  <UnifiedInbox v-if="currentView === 'unified'" key="unified" />
+  <MailList v-else-if="currentView === 'mail'" key="mail" />
+  <ComposeEmail v-else-if="currentView === 'compose'" key="compose" @sent="onMailSent" @discard="onMailDiscard" />
+  <AccountList v-else-if="currentView === 'accounts'" key="accounts" />
+  <ContactList v-else-if="currentView === 'contacts'" key="contacts" />
+  <Backup v-else-if="currentView === 'backup'" key="backup" />
+  <Settings v-else-if="currentView === 'settings'" key="settings" />
+  <About v-else-if="currentView === 'about'" key="about" />
   </transition>
   </main>
   </div>
@@ -1093,7 +1097,21 @@ watch(showNotificationPanel, (open) => {
 
 .content {
   flex: 1;
+  min-height: 0;
   overflow: hidden;
+  /* 子页面 height:100% / flex 在切换时也能撑满 */
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* Transition 包装节点与子视图占满 content */
+.content > * {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 /* 底部导航（桌面端隐藏） */
@@ -1224,12 +1242,19 @@ watch(showNotificationPanel, (open) => {
   to { opacity: 0; transform: translateY(8px) scale(0.95); }
 }
 
-/* 页面切换动画 */
+/* 页面切换动画
+   - leave 时 absolute 叠层，避免双页面同时占位把布局撑乱
+   - 不用 mode=out-in，进入页可立刻挂载，避免右侧空白 */
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity 0.2s ease;
+  transition: opacity 0.18s ease;
 }
-
+.fade-leave-active {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  pointer-events: none;
+}
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;

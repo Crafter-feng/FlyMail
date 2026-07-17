@@ -300,11 +300,18 @@
   <!-- 附件区域（在编辑器下方、表单底部） -->
   <div class="attachments-section">
   <div class="attachments-header">
-  <label class="upload-btn">
-  <input type="file" multiple @change="handleFileSelect" class="hidden-input" />
+  <!-- 附件来源菜单：本机 / NAS -->
+  <div class="upload-menu-wrap">
+  <button type="button" class="upload-btn" @click="showUploadMenu = !showUploadMenu">
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
   附件
-  </label>
+  </button>
+  <div v-if="showUploadMenu" class="upload-menu">
+  <button type="button" class="upload-menu-item" @click="pickLocalFiles">从本机上传</button>
+  <button type="button" class="upload-menu-item" @click="pickNasFiles">从NAS添加</button>
+  </div>
+  <input ref="localFileInput" type="file" multiple @change="handleFileSelect" class="hidden-input" />
+  </div>
   <span v-if="attachments.length" class="attachments-count">
   {{ attachments.length }}个 · {{ formatSize(totalAttachmentSize) }} / {{ attachmentLimitMb }}MB
   <span v-if="isAttachmentOverLimit" class="att-warning">超限</span>
@@ -314,6 +321,7 @@
   <div v-for="(att, i) in attachments" :key="i" class="attachment-item">
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
   <span class="att-name">{{ att.filename }}</span>
+  <span v-if="att.source === 'nas'" class="att-source-tag">NAS</span>
   <span class="att-size">{{ formatSize(att.size) }}</span>
   <button class="att-remove" @click="removeAttachment(i)">&times;</button>
   </div>
@@ -324,6 +332,14 @@
   </div>
   </div>
   </div>
+
+  <!-- NAS 选文件 -->
+  <NasPathPicker
+  v-model="showNasFilePicker"
+  mode="file"
+  title="从 NAS 选择附件"
+  @confirm="onNasFileConfirmed"
+  />
 
   <!-- 定时发送弹窗 -->
   <div v-if="showScheduleModal" class="modal-overlay" @click.self="showScheduleModal = false">
@@ -430,6 +446,7 @@ import { ref, computed, onMounted } from 'vue';
 import api from '../utils/api';
 import { useMailStore } from '../stores/mail';
 import TiptapEditor from '../components/TiptapEditor.vue';
+import NasPathPicker from '../components/NasPathPicker.vue';
 import { useContactAutocomplete } from '../composables/useContactAutocomplete';
 
 const emit = defineEmits<{
@@ -462,9 +479,12 @@ const toField = createField(toInput);
 const ccField = createField(ccInput);
 const bccField = createField(bccInput);
 
-// 附件
-const attachments = ref<{ filename: string; size: number; path: string }[]>([]);
+// 附件（source: local=临时上传, nas=授权目录引用）
+const attachments = ref<{ filename: string; size: number; path: string; source?: 'local' | 'nas' }[]>([]);
 const isDragging = ref(false);
+const showUploadMenu = ref(false);
+const localFileInput = ref<HTMLInputElement | null>(null);
+const showNasFilePicker = ref(false);
 
 // 各邮箱平台附件大小限制（MB），与后端 services/attachments.py 保持一致
 const PROVIDER_ATTACHMENT_LIMITS: Record<string, number> = {
@@ -1012,6 +1032,37 @@ function discardMail() {
 }
 
 // 附件处理
+function pickLocalFiles() {
+  showUploadMenu.value = false;
+  localFileInput.value?.click();
+}
+
+function pickNasFiles() {
+  showUploadMenu.value = false;
+  showNasFilePicker.value = true;
+}
+
+/** 从 NAS 选择文件后登记引用（不复制） */
+async function onNasFileConfirmed(path: string) {
+  try {
+    const data = await api.post('/messages/register-nas-attachment', { path }) as any;
+    // 去重：同一路径不重复添加
+    if (attachments.value.some(a => a.path === data.path)) {
+      showToast('该文件已在附件列表中', 'info');
+      return;
+    }
+    attachments.value.push({
+      filename: data.filename,
+      size: data.size,
+      path: data.path,
+      source: 'nas',
+    });
+  } catch (e: any) {
+    const msg = e?.response?.data?.detail || e?.message || '添加 NAS 附件失败';
+    showToast(msg, 'error');
+  }
+}
+
 async function handleFileSelect(event: Event) {
   const input = event.target as HTMLInputElement;
   if (!input.files) return;
@@ -1046,6 +1097,7 @@ async function uploadFile(file: File) {
   filename: data.filename,
   size: data.size,
   path: data.path,
+  source: data.source || 'local',
   });
   } catch (e: any) {
   // 优先显示后端返回的友好错误信息
@@ -1056,10 +1108,13 @@ async function uploadFile(file: File) {
 
 async function removeAttachment(index: number) {
   const att = attachments.value[index];
-  try {
-  await api.delete('/messages/upload-attachment', { params: { path: att.path } });
-  } catch {
-  // 删除失败也从前端移除
+  // NAS 引用：仅从前端列表移除，不删源文件（后端也会忽略 unlink）
+  if (att.source !== 'nas') {
+    try {
+      await api.delete('/messages/upload-attachment', { params: { path: att.path } });
+    } catch {
+      // 删除失败也从前端移除
+    }
   }
   attachments.value.splice(index, 1);
 }
@@ -1075,7 +1130,10 @@ function formatSize(bytes: number): string {
 .compose-page {
   display: flex;
   flex-direction: column;
+  /* 优先用 flex 撑满父级，兼容 height:100% 在 transition 切换时失效 */
+  flex: 1;
   height: 100%;
+  min-height: 0;
   position: relative;
   background: var(--bg-primary);
 }
@@ -1368,6 +1426,51 @@ function formatSize(bytes: number): string {
 .upload-btn:hover {
   background: var(--bg-hover);
   border-color: var(--accent-blue, #007AFF);
+}
+
+/* 附件来源下拉菜单 */
+.upload-menu-wrap {
+  position: relative;
+}
+
+.upload-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  min-width: 160px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+  z-index: 20;
+  padding: 4px;
+}
+
+.upload-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.upload-menu-item:hover {
+  background: var(--bg-hover, rgba(0, 0, 0, 0.05));
+}
+
+.att-source-tag {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(0, 122, 255, 0.12);
+  color: var(--accent-blue, #007AFF);
+  flex-shrink: 0;
 }
 
 .hidden-input {

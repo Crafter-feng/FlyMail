@@ -284,6 +284,27 @@ class UploadAttachmentResponse(BaseModel):
   filename: str = Field(description="原始文件名")
   size: int = Field(description="文件大小（字节）")
   path: str = Field(description="服务端临时附件路径，发送邮件时传入 attachments")
+  source: str = Field(default="local", description="来源：local=临时上传，nas=授权目录引用")
+
+
+class RegisterNasAttachmentRequest(BaseModel):
+  """从 NAS 授权目录引用附件（不复制，仅登记路径）"""
+  path: str = Field(description="授权目录内的文件绝对路径")
+
+
+class SaveAttachmentToNasRequest(BaseModel):
+  """将邮件附件保存到 NAS 授权目录"""
+  account_id: str = Field(default="", description="账号 ID")
+  folder: str = Field(default="INBOX", description="邮件所在文件夹")
+  target_dir: str = Field(description="目标目录（必须在飞牛授权目录内）")
+  filename: str = Field(default="", description="可选保存文件名，默认用附件原名")
+
+
+class SaveAttachmentToNasResponse(BaseModel):
+  success: bool = Field(default=True, description="是否成功")
+  path: str = Field(description="保存后的完整路径")
+  filename: str = Field(description="最终文件名")
+  size: int = Field(description="文件大小（字节）")
 
 
 class SignatureSettingsRequest(BaseModel):

@@ -100,7 +100,11 @@ def build_upload_path(user_uid: str, filename: str) -> tuple[str, Path]:
 
 
 def resolve_user_attachment_path(user_uid: str, path: str) -> Path:
-    """Resolve and validate that a path belongs to the current user."""
+    """解析并校验路径是否属于当前用户的临时上传目录。
+
+    仅用于：本机上传后的删除、仅临时目录场景。
+    写信发送请用 resolve_compose_attachment_path（支持 NAS 授权目录）。
+    """
     if not path:
         raise AppError(400, "附件路径不能为空")
 
@@ -111,15 +115,72 @@ def resolve_user_attachment_path(user_uid: str, path: str) -> Path:
     return file_path
 
 
+def is_temp_upload_path(user_uid: str, path: str) -> bool:
+    """判断路径是否落在用户临时上传目录内（不要求文件已存在）。"""
+    if not path:
+        return False
+    try:
+        file_path = Path(path).resolve()
+        user_dir = get_user_attachment_dir(user_uid).resolve()
+        return file_path.is_relative_to(user_dir)
+    except Exception:
+        return False
+
+
+def resolve_compose_attachment_path(user_uid: str, path: str) -> Path:
+    """解析写信附件路径：允许用户临时目录，或飞牛 NAS 授权目录内的已有文件。
+
+    NAS 路径直接引用，发送时按路径读盘；不复制到临时目录。
+    """
+    if not path:
+        raise AppError(400, "附件路径不能为空")
+
+    try:
+        file_path = Path(path).resolve()
+    except Exception:
+        raise AppError(400, "非法附件路径")
+
+    # 1) 用户临时上传目录
+    user_dir = get_user_attachment_dir(user_uid).resolve()
+    if file_path.is_relative_to(user_dir):
+        if not file_path.exists() or not file_path.is_file():
+            raise AppError(404, "附件文件不存在")
+        return file_path
+
+    # 2) 飞牛授权目录内的文件（NAS 直接引用）
+    from utils.paths import is_path_authorized
+
+    if not is_path_authorized(str(file_path)):
+        raise AppError(403, "无权访问该附件路径（不在临时目录或授权目录内）")
+    if not file_path.exists() or not file_path.is_file():
+        raise AppError(404, "附件文件不存在")
+    return file_path
+
+
 def validate_attachment_paths(user_uid: str, paths: Iterable[str] | None) -> list[str]:
-    """Validate compose attachment paths and return canonical string paths."""
+    """校验写信附件路径（临时上传 + NAS 授权），返回规范化绝对路径字符串。"""
     if not paths:
         return []
 
     safe_paths: list[str] = []
     for path in paths:
-        file_path = resolve_user_attachment_path(user_uid, path)
-        if not file_path.exists() or not file_path.is_file():
-            raise AppError(404, "附件文件不存在")
+        file_path = resolve_compose_attachment_path(user_uid, path)
         safe_paths.append(str(file_path))
     return safe_paths
+
+
+def unique_target_file(target_dir: Path, filename: str) -> Path:
+    """在目标目录生成不冲突的文件路径；同名时追加 (1)、(2)..."""
+    safe_name = sanitize_attachment_filename(filename)
+    candidate = target_dir / safe_name
+    if not candidate.exists():
+        return candidate
+
+    stem = candidate.stem
+    suffix = candidate.suffix
+    index = 1
+    while True:
+        alt = target_dir / f"{stem} ({index}){suffix}"
+        if not alt.exists():
+            return alt
+        index += 1

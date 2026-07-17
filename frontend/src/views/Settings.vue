@@ -622,12 +622,8 @@ const backupAvailableDirs = ref<BackupDir[]>([]);
 const backupDropdownOpen = ref(false);
 const backupSelectRef = ref<HTMLElement | null>(null);
 
-// 目录选择器状态（面包屑导航 + 逐级浏览）
+// 目录选择器状态（NasPathPicker 控制显示）
 const showBackupPathPicker = ref(false);
-const backupPickerLoading = ref(false);
-const backupPickerDirs = ref<string[]>([]);
-const backupPickerBreadcrumbs = ref<{ name: string; path: string }[]>([]);
-const backupPickerCurrentPath = ref('');
 const backupAccessiblePaths = ref<string[]>([]);
 
 interface BackupForm {
