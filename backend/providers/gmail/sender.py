@@ -32,25 +32,24 @@ class GmailSender(MailSender):
     def _connect_smtp(self, credentials: Credentials) -> IPv4SMTP:
         """同步建立 SMTP 连接
 
-        启用代理时通过 HTTP CONNECT 隧道连接（用于网络受限环境），
-        否则走 IPv4 直连。STARTTLS 在隧道内进行。
+        代理从 Credentials.extra 按用户读取（proxy_url_from_extra），
+        不再使用进程全局 GMAIL_PROXY_*。STARTTLS 在隧道内进行。
         """
-        if gmail_config.GMAIL_PROXY_ENABLED and gmail_config.GMAIL_PROXY_URL:
+        proxy_url = gmail_config.proxy_url_from_extra(credentials.extra)
+        if proxy_url:
             conn = ProxySMTP(
                 gmail_config.GMAIL_SMTP_HOST,
                 gmail_config.GMAIL_SMTP_PORT,
-                proxy_url=gmail_config.GMAIL_PROXY_URL,
+                proxy_url=proxy_url,
             )
         else:
             conn = IPv4SMTP(gmail_config.GMAIL_SMTP_HOST, gmail_config.GMAIL_SMTP_PORT)
         conn.ehlo()
-        # 安全修复 S8：传入安全 SSL context，验证证书和主机名
-        # 旧代码 conn.starttls() 不传 context，使用不验证证书的默认 context，存在 MITM 风险
+        # 传入安全 SSL context，验证证书和主机名，降低 MITM 风险
         ssl_ctx = ssl.create_default_context()
         conn.starttls(context=ssl_ctx)
         conn.ehlo()
-        # 安全修复 S9：base64 编码 auth_string，防止 token 明文泄露到日志/异常
-        # 旧代码直接拼接 auth_string 到 AUTH 命令，异常时可能泄露 access_token
+        # base64 编码 auth_string，防止 token 明文泄露到日志/异常
         auth_string = f"user={credentials.extra.get('email', '')}\x01auth=Bearer {credentials.access_token}\x01\x01"
         auth_b64 = base64.b64encode(auth_string.encode("utf-8")).decode("ascii")
         code, response = conn.docmd("AUTH", "XOAUTH2 " + auth_b64)

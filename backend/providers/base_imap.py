@@ -35,6 +35,11 @@ class BaseIMAPReceiver(MailReceiver):
     对于使用 self.conn 的子类（QQ/网易/iCloud），需添加 _conn 属性别名。
     """
 
+    # 列表/增量同步 FETCH 项：附带 BODYSTRUCTURE，用于判断是否有附件
+    _LIST_FETCH_ITEMS = (
+        '(FLAGS BODYSTRUCTURE BODY.PEEK[HEADER.FIELDS (SUBJECT FROM TO DATE)])'
+    )
+
     # 子类可覆盖：iCloud/Outlook 的 IMAP 服务器要求 flags 用括号包裹
     _flags_parenthesized = False
 
@@ -48,8 +53,7 @@ class BaseIMAPReceiver(MailReceiver):
         导致包含空格的文件夹名（如 "Sent Messages"、"Deleted Messages"）
         被 IMAP 服务器解析为多个参数，返回 "EXAMINE parameters!" 错误。
 
-        修复 Q6：转义文件夹名中的双引号和反斜杠（RFC 3501 要求），
-        旧代码只处理空格，未转义特殊字符，可能导致 IMAP 命令解析错误。
+        同时转义文件夹名中的双引号和反斜杠（RFC 3501），避免命令解析错误。
         """
         # 含空格或特殊字符时需要加引号，并转义内部的 " 和 \
         if ' ' in folder or '"' in folder or '\\' in folder:
@@ -119,6 +123,59 @@ class BaseIMAPReceiver(MailReceiver):
 
     # ---- 批量解析 ----
 
+    @staticmethod
+    def _extract_bodystructure_text(response_text: str) -> str:
+        """从 FETCH 响应文本中提取 BODYSTRUCTURE 括号树（平衡括号）。"""
+        if not response_text:
+            return ""
+        match = re.search(r"BODYSTRUCTURE\s*", response_text, re.IGNORECASE)
+        if not match:
+            return ""
+        start = match.end()
+        if start >= len(response_text) or response_text[start] != "(":
+            return ""
+        depth = 0
+        in_quote = False
+        i = start
+        while i < len(response_text):
+            ch = response_text[i]
+            # BODYSTRUCTURE 字符串字面量内的括号不计入深度
+            if ch == '"' and (i == 0 or response_text[i - 1] != "\\"):
+                in_quote = not in_quote
+            elif not in_quote:
+                if ch == "(":
+                    depth += 1
+                elif ch == ")":
+                    depth -= 1
+                    if depth == 0:
+                        return response_text[start : i + 1]
+            i += 1
+        return ""
+
+    @staticmethod
+    def _bodystructure_indicates_attachments(bs_text: str) -> bool:
+        """根据 BODYSTRUCTURE 文本启发式判断是否有附件。
+
+        列表同步不拉全文，只能靠 BODYSTRUCTURE。稳定启发式：
+        1. disposition 为 attachment
+        2. 出现 FILENAME 参数
+        3. APPLICATION/* 类型（PDF/ZIP/Office 等几乎一定是附件）
+        内嵌图片常见 INLINE + IMAGE，不会单独因 IMAGE 判 true。
+        """
+        if not bs_text:
+            return False
+        upper = bs_text.upper()
+        if re.search(r'"ATTACHMENT"', upper):
+            return True
+        if re.search(r'"FILENAME"', upper):
+            return True
+        if re.search(r'\("APPLICATION"', upper):
+            return True
+        # 带 NAME 的音视频通常为附件
+        if re.search(r'\("(AUDIO|VIDEO)"', upper) and re.search(r'"NAME"', upper):
+            return True
+        return False
+
     def _parse_batch_fetch_response(self, msg_data, folder: str) -> List[Message]:
         """解析批量 UID FETCH 返回的数据
 
@@ -129,6 +186,8 @@ class BaseIMAPReceiver(MailReceiver):
         - 有些服务器把 FLAGS 放在 literal 之前：FLAGS (\\Seen) UID 123 BODY[...] {n}
         - 有些服务器把 FLAGS 放在 literal 之后：UID 123 BODY[...] {n}  →  FLAGS (\\Seen))
         第二种情况下，FLAGS 在 tuple 后面的独立 bytes 元素中，必须拼接后才能解析。
+
+        若响应含 BODYSTRUCTURE，会解析 has_attachments（列表附件标记）。
         """
         messages = []
         i = 0
@@ -153,6 +212,10 @@ class BaseIMAPReceiver(MailReceiver):
                 flags_match = re.search(r'FLAGS\s*\(([^)]*)\)', flags_text)
                 is_read = bool(flags_match and "\\Seen" in flags_match.group(1))
 
+                # 从 BODYSTRUCTURE 判断附件（列表同步不拉全文）
+                bs_text = self._extract_bodystructure_text(flags_text)
+                has_attachments = self._bodystructure_indicates_attachments(bs_text)
+
                 if header_bytes:
                     msg = email.message_from_bytes(header_bytes)
                     messages.append(Message(
@@ -164,6 +227,7 @@ class BaseIMAPReceiver(MailReceiver):
                         date=self._parse_date(msg.get("Date", "")),
                         is_read=is_read,
                         folder=folder,
+                        has_attachments=has_attachments,
                     ))
                 i = j  # 跳过已处理的 bytes 元素
             else:
@@ -279,6 +343,11 @@ class BaseIMAPReceiver(MailReceiver):
         cc = self._decode_header(msg.get("Cc", ""))
         reply_to = self._decode_header(msg.get("Reply-To", ""))
         date_str = msg.get("Date", "")
+        # 解析 RFC Message-ID，供回复 In-Reply-To 使用（不是 IMAP UID）
+        raw_mid = msg.get("Message-ID") or msg.get("Message-Id") or ""
+        rfc_message_id = (raw_mid or "").strip()
+        if rfc_message_id and not rfc_message_id.startswith("<"):
+            rfc_message_id = f"<{rfc_message_id.strip('<>')}>"
 
         body_text = ""
         body_html = ""
@@ -354,6 +423,7 @@ class BaseIMAPReceiver(MailReceiver):
             folder=folder,
             attachments=attachments,
             has_attachments=len(attachments) > 0,
+            message_id=rfc_message_id,
         )
 
     # ---- 附件 ----
@@ -502,9 +572,9 @@ class BaseIMAPReceiver(MailReceiver):
             # SELECT 失败（文件夹不存在等），返回空列表避免后续操作报错
             return []
         # UID 按降序排列（最新的在前），用逗号拼接成 UID 集合
+        # 与列表同步一致，附带 BODYSTRUCTURE 以正确标记 has_attachments
         uid_set = ",".join(str(u) for u in sorted(uids, reverse=True))
-        status, msg_data = self._conn.uid('FETCH', uid_set,
-            '(FLAGS BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE)])')
+        status, msg_data = self._conn.uid('FETCH', uid_set, self._LIST_FETCH_ITEMS)
         if status != 'OK':
             return []
         messages = self._parse_batch_fetch_response(msg_data, folder)

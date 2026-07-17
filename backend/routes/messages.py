@@ -77,6 +77,7 @@ from routes._helpers import (
     _notify_if_permanent_token_error,
     _safe_disconnect,
     _with_outlook_retry,
+    cached_has_body,
 )
 
 # ==================== 日志与常量 ====================
@@ -281,7 +282,10 @@ async def _sync_folder_background(account: Account, folder: str):
         new_count = await sync_folder_to_cache(account, folder)
         if new_count > 0:
             # 缓存同步不是真正新邮件，只推送刷新信号（不创建通知记录）
-            await sync_service.refresh_clients(account.id, folder)
+            # 必须带 user_uid，避免多用户场景下广播给所有人
+            await sync_service.refresh_clients(
+                account.id, folder, user_uid=account.user_uid
+            )
     except Exception as e:
         logger.error("后台同步文件夹 %s 失败: %s", folder, e)
 
@@ -729,7 +733,7 @@ async def get_message_detail(
     try:
         # 优先从缓存获取详情（毫秒级），避免每次都建立 IMAP 连接（秒级）
         cached = await get_cached_message_detail(account.id, int(_extract_uid(message_id)), folder)
-        if cached and cached.get("body_html"):
+        if cached_has_body(cached):
             # 缓存命中，直接返回（但需要补充附件信息，如果 IMAP 拉取过的话缓存有 has_attachments）
             # 如果有附件，优先从本地备份 .eml 获取附件列表（毫秒级），无备份再从 IMAP 获取
             if cached.get("has_attachments"):
@@ -737,15 +741,21 @@ async def get_message_detail(
                 attachment_from_backup = False
                 try:
                     from db import get_archived_message_by_uid
-                    from services.backup import parse_eml_to_message, get_backup_root_async
+                    from services.backup import (
+                        parse_eml_to_message,
+                        get_backup_root_async,
+                        resolve_eml_under_backup_root,
+                    )
 
                     uid_int = int(_extract_uid(message_id))
                     archive = await get_archived_message_by_uid(user_uid, account.id, folder, uid_int)
                     if archive:
                         backup_root = await get_backup_root_async(user_uid)
                         if backup_root:
-                            eml_path = backup_root / archive["eml_path"]
-                            if eml_path.exists():
+                            eml_path = resolve_eml_under_backup_root(
+                                backup_root, archive.get("eml_path")
+                            )
+                            if eml_path and eml_path.exists():
                                 raw_bytes = await asyncio.to_thread(eml_path.read_bytes)
                                 eml_msg = parse_eml_to_message(
                                     raw_bytes, archive,
@@ -789,26 +799,38 @@ async def get_message_detail(
                                 has_attachments=True,
                                 body_text=full_msg.body_text or cached.get("body_text", ""),
                                 body_html=full_msg.body_html or cached["body_html"],
+                                # 详情解析到的 RFC Message-ID，供回复 In-Reply-To
+                                message_id=getattr(full_msg, "message_id", "") or cached.get("message_id", ""),
                             )
                             await upsert_cached_messages([cm])
                         except Exception as e:
                             logger.debug("缓存附件邮件详情失败: %s", e)
                     except Exception as e:
                         logger.debug("附件获取失败，不影响正文查看: %s", e)
+            # 缓存命中也要带回所属账号（聚合收件箱回复用）
+            cached["account_id"] = account.id
+            cached["account_email"] = account.email
+            cached["account_provider"] = account.provider
             return cached
 
         # 缓存未命中，先查本地备份（毫秒级），无备份再降级到 IMAP 拉取（秒级）
         try:
             from db import get_archived_message_by_uid
-            from services.backup import parse_eml_to_message, get_backup_root_async
+            from services.backup import (
+                parse_eml_to_message,
+                get_backup_root_async,
+                resolve_eml_under_backup_root,
+            )
 
             uid_int = int(_extract_uid(message_id))
             archive = await get_archived_message_by_uid(user_uid, account.id, folder, uid_int)
             if archive:
                 backup_root = await get_backup_root_async(user_uid)
                 if backup_root:
-                    eml_path = backup_root / archive["eml_path"]
-                    if eml_path.exists():
+                    eml_path = resolve_eml_under_backup_root(
+                        backup_root, archive.get("eml_path")
+                    )
+                    if eml_path and eml_path.exists():
                         # 从 .eml 文件解析邮件详情
                         raw_bytes = await asyncio.to_thread(eml_path.read_bytes)
                         # 从缓存表补充 is_read/is_starred（列表同步时已存储，即使正文为空）
@@ -838,11 +860,17 @@ async def get_message_detail(
                                 has_attachments=message_dict["has_attachments"],
                                 body_text=message_dict["body_text"],
                                 body_html=message_dict["body_html"],
+                                # 备份 .eml 解析出的 RFC Message-ID
+                                message_id=message_dict.get("message_id", "") or "",
                             )
                             await upsert_cached_messages([cm])
                         except Exception as e:
                             logger.debug("从备份写入缓存失败（不影响返回）: %s", e)
                         logger.debug("邮件详情从本地备份加载: uid=%s folder=%s", message_id, folder)
+                        # 备份路径也带回所属账号
+                        message_dict["account_id"] = account.id
+                        message_dict["account_email"] = account.email
+                        message_dict["account_provider"] = account.provider
                         return message_dict
         except Exception as e:
             logger.debug("查本地备份失败，降级到 IMAP: %s", e)
@@ -883,6 +911,8 @@ async def get_message_detail(
                 has_attachments=len(message.attachments) > 0,
                 body_text=message.body_text,
                 body_html=message.body_html,
+                # IMAP 详情解析的 RFC Message-ID，供回复线程头
+                message_id=getattr(message, "message_id", "") or "",
             )
             await upsert_cached_messages([cm])
         except Exception as e:
@@ -891,6 +921,10 @@ async def get_message_detail(
         # 返回给前端时，用校正后的 is_read（而非 fetch_message_detail 默认的 False）
         result = message.model_dump()
         result["is_read"] = corrected_is_read
+        # 聚合收件箱需要带回所属账号，供前端回复时选对发件人
+        result["account_id"] = account.id
+        result["account_email"] = account.email
+        result["account_provider"] = account.provider
         return result
     except Exception as e:
         logger.warning("获取邮件详情失败: uid=%s, folder=%s, error=%s", message_id, folder, e)
@@ -947,7 +981,7 @@ async def prefetch_messages(request: Request, body: PrefetchMessagesRequest = Bo
                     uid_num = int(_extract_uid(msg_id))
                     # 已缓存（有正文）则跳过
                     cached = await get_cached_message_detail(account.id, uid_num, folder)
-                    if cached and cached.get("body_html"):
+                    if cached_has_body(cached):
                         continue
 
                     # 复用已有连接拉取正文
@@ -970,6 +1004,8 @@ async def prefetch_messages(request: Request, body: PrefetchMessagesRequest = Bo
                         has_attachments=len(message.attachments) > 0,
                         body_text=message.body_text,
                         body_html=message.body_html,
+                        # 预取时一并写入 RFC Message-ID
+                        message_id=getattr(message, "message_id", "") or "",
                     )
                     await upsert_cached_messages([cm])
                     prefetched += 1
@@ -1013,15 +1049,21 @@ async def download_attachment(
         # 优先从本地备份 .eml 提取附件（毫秒级），无备份再降级到 IMAP（秒级）
         try:
             from db import get_archived_message_by_uid
-            from services.backup import extract_attachment_from_eml, get_backup_root_async
+            from services.backup import (
+                extract_attachment_from_eml,
+                get_backup_root_async,
+                resolve_eml_under_backup_root,
+            )
 
             uid_int = int(_extract_uid(message_id))
             archive = await get_archived_message_by_uid(user_uid, account.id, folder, uid_int)
             if archive:
                 backup_root = await get_backup_root_async(user_uid)
                 if backup_root:
-                    eml_path = backup_root / archive["eml_path"]
-                    if eml_path.exists():
+                    eml_path = resolve_eml_under_backup_root(
+                        backup_root, archive.get("eml_path")
+                    )
+                    if eml_path and eml_path.exists():
                         raw_bytes = await asyncio.to_thread(eml_path.read_bytes)
                         result = extract_attachment_from_eml(raw_bytes, part_number)
                         if result:

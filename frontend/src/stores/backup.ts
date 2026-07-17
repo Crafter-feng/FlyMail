@@ -35,56 +35,56 @@ export const useBackupStore = defineStore('backup', () => {
 
   /** 固定5个核心文件夹列表（computed，永远不变，不会闪烁） */
   const folders = computed(() =>
-    CORE_FOLDERS.map(f => ({
-      folder: f.path,
-      name: f.name,
-      count: folderCounts.value[f.path]?.count || 0,
-      deleted_count: folderCounts.value[f.path]?.deleted_count || 0,
-    }))
+  CORE_FOLDERS.map(f => ({
+  folder: f.path,
+  name: f.name,
+  count: folderCounts.value[f.path]?.count || 0,
+  deleted_count: folderCounts.value[f.path]?.deleted_count || 0,
+  }))
   );
 
   /** 加载归档文件夹列表（后端按核心类别汇总返回5个文件夹）
-   * @param accountId 筛选账号，为空则返回所有账号的文件夹汇总
-   */
+  * @param accountId 筛选账号，为空则返回所有账号的文件夹汇总
+  */
   async function loadFolders(accountId: string = '') {
-    try {
-      const params: Record<string, any> = {};
-      if (accountId) params.account_id = accountId;
-      const data = await api.get('/backup/folders', { params }) as any;
-      // 后端返回5个核心文件夹的统计，映射到 folderCounts
-      const counts: Record<string, { count: number; deleted_count: number }> = {};
-      for (const f of (data.folders || [])) {
-        counts[f.folder] = { count: f.count || 0, deleted_count: f.deleted_count || 0 };
-      }
-      folderCounts.value = counts;
-    } catch (e) {
-      console.error('加载备份文件夹失败:', e);
-    }
+  try {
+  const params: Record<string, any> = {};
+  if (accountId) params.account_id = accountId;
+  const data = await api.get('/backup/folders', { params }) as any;
+  // 后端返回5个核心文件夹的统计，映射到 folderCounts
+  const counts: Record<string, { count: number; deleted_count: number }> = {};
+  for (const f of (data.folders || [])) {
+  counts[f.folder] = { count: f.count || 0, deleted_count: f.deleted_count || 0 };
+  }
+  folderCounts.value = counts;
+  } catch (e) {
+  console.error('加载备份文件夹失败:', e);
+  }
   }
 
   /** 设置当前文件夹并持久化 */
   function setFolder(folder: string) {
-    currentFolder.value = folder;
-    sessionStorage.setItem('flymail_backup_folder', folder);
+  currentFolder.value = folder;
+  sessionStorage.setItem('flymail_backup_folder', folder);
   }
 
   /** 文件夹路径转中文显示名（固定5个核心文件夹） */
   function folderDisplayName(folder: string): string {
-    const f = CORE_FOLDERS.find(c => c.path === folder);
-    return f ? f.name : folder;
+  const f = CORE_FOLDERS.find(c => c.path === folder);
+  return f ? f.name : folder;
   }
 
   /** 根据文件夹路径返回颜色标识 class */
   function getFolderClass(folder: string): string {
-    return getFolderClassByPath(folder);
+  return getFolderClassByPath(folder);
   }
 
   return {
-    currentFolder,
-    folders,
-    loadFolders,
-    setFolder,
-    folderDisplayName,
-    getFolderClass,
+  currentFolder,
+  folders,
+  loadFolders,
+  setFolder,
+  folderDisplayName,
+  getFolderClass,
   };
 });

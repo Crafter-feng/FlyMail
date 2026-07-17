@@ -3,26 +3,26 @@
  *
  * ★ 方案变更历史
  * 1. html2pdf.js（html2canvas + jsPDF）→ 连续4种容器隐藏方式都空白
- *    原因：html2canvas 在飞牛OS WebView 中不兼容，无法正确截图
+ *  原因：html2canvas 在飞牛OS WebView 中不兼容，无法正确截图
  * 2. iframe + window.print() → 当前方案
- *    优势：零依赖、矢量 PDF（文字可选可搜）、浏览器原生功能
+ *  优势：零依赖、矢量 PDF（文字可选可搜）、浏览器原生功能
  *
  * 原理：创建隐藏 iframe，在 iframe 中渲染邮件 HTML，调用 print()
  * 用户在打印对话框中选择"保存为 PDF"即可导出
  *
  * 排版结构（所见即所得）：
  * ┌─────────────────────────────┐
- * │  主题（大标题）              │
+ * │  主题（大标题）  │
  * │  ─────────────────────────  │
- * │  发件人：xxx <xxx@qq.com>    │
- * │  收件人：xxx, xxx            │
- * │  抄  送：xxx, xxx            │
- * │  日  期：2026-07-12 10:30    │
+ * │  发件人：xxx <xxx@qq.com>  │
+ * │  收件人：xxx, xxx  │
+ * │  抄  送：xxx, xxx  │
+ * │  日  期：2026-07-12 10:30  │
  * │  ─────────────────────────  │
- * │                              │
+ * │  │
  * │  邮件正文（保留原始HTML格式） │
- * │  ...                         │
- * │                              │
+ * │  ...  │
+ * │  │
  * └─────────────────────────────┘
  */
 import { sanitizeHtml } from './sanitize'
@@ -53,33 +53,33 @@ export async function exportMailToPDF(msg: Message): Promise<void> {
   document.body.appendChild(iframe)
 
   try {
-    // 获取 iframe 的 document，写入邮件 HTML
-    const doc = iframe.contentDocument || iframe.contentWindow?.document
-    if (!doc) {
-      throw new Error('无法访问 iframe 文档')
-    }
+  // 获取 iframe 的 document，写入邮件 HTML
+  const doc = iframe.contentDocument || iframe.contentWindow?.document
+  if (!doc) {
+  throw new Error('无法访问 iframe 文档')
+  }
 
-    doc.open()
-    doc.write(fullHtml)
-    doc.close()
+  doc.open()
+  doc.write(fullHtml)
+  doc.close()
 
-    // 等待浏览器完成布局渲染
-    await waitForRender()
-    // 等待 iframe 内所有图片加载完成
-    await waitForImages(doc.body)
+  // 等待浏览器完成布局渲染
+  await waitForRender()
+  // 等待 iframe 内所有图片加载完成
+  await waitForImages(doc.body)
 
-    // 调用 iframe 的 print 方法，触发浏览器打印对话框
-    // 用户可在对话框中选择"保存为 PDF"来导出
-    iframe.contentWindow?.focus()
-    iframe.contentWindow?.print()
+  // 调用 iframe 的 print 方法，触发浏览器打印对话框
+  // 用户可在对话框中选择"保存为 PDF"来导出
+  iframe.contentWindow?.focus()
+  iframe.contentWindow?.print()
   } finally {
-    // 延迟移除 iframe：打印对话框是同步阻塞的，关闭后才执行 finally
-    // 但某些环境下 print() 是异步的，延迟 1 秒移除确保安全
-    setTimeout(() => {
-      if (iframe.parentNode) {
-        document.body.removeChild(iframe)
-      }
-    }, 1000)
+  // 延迟移除 iframe：打印对话框是同步阻塞的，关闭后才执行 finally
+  // 但某些环境下 print() 是异步的，延迟 1 秒移除确保安全
+  setTimeout(() => {
+  if (iframe.parentNode) {
+  document.body.removeChild(iframe)
+  }
+  }, 1000)
   }
 }
 
@@ -97,70 +97,70 @@ function buildFullHtml(msg: Message, headerHtml: string, bodyHtml: string): stri
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title}</title>
   <style>
-    /* 打印样式：A4 纸张，10mm 边距 */
-    @page {
-      size: A4 portrait;
-      margin: 10mm;
-    }
-    /* 基础排版 */
-    body {
-      font-family: -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif;
-      color: #333;
-      line-height: 1.6;
-      padding: 20px;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-    }
-    /* 邮件主题 */
-    h1.mail-subject {
-      font-size: 20px;
-      font-weight: 600;
-      margin: 0 0 12px 0;
-      color: #1a1a1a;
-      word-break: break-word;
-    }
-    /* 元数据表格 */
-    table.mail-meta {
-      font-size: 12px;
-      color: #666;
-      line-height: 1.8;
-      border-collapse: collapse;
-      width: 100%;
-    }
-    table.mail-meta td {
-      vertical-align: top;
-      padding-right: 8px;
-    }
-    table.mail-meta td.label {
-      color: #999;
-      white-space: nowrap;
-      width: 60px;
-    }
-    table.mail-meta td.value {
-      word-break: break-all;
-    }
-    /* 分隔线 */
-    hr.mail-divider {
-      border: none;
-      border-top: 1px solid #ddd;
-      margin: 16px 0;
-    }
-    /* 邮件正文 */
-    .mail-body {
-      font-size: 14px;
-      line-height: 1.8;
-    }
-    .mail-body img {
-      max-width: 100%;
-      height: auto;
-    }
-    .mail-body table {
-      max-width: 100%;
-    }
-    /* 打印时优化 */
-    @media print {
-      body { padding: 0; }
-    }
+  /* 打印样式：A4 纸张，10mm 边距 */
+  @page {
+  size: A4 portrait;
+  margin: 10mm;
+  }
+  /* 基础排版 */
+  body {
+  font-family: -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+  color: #333;
+  line-height: 1.6;
+  padding: 20px;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+  }
+  /* 邮件主题 */
+  h1.mail-subject {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0 0 12px 0;
+  color: #1a1a1a;
+  word-break: break-word;
+  }
+  /* 元数据表格 */
+  table.mail-meta {
+  font-size: 12px;
+  color: #666;
+  line-height: 1.8;
+  border-collapse: collapse;
+  width: 100%;
+  }
+  table.mail-meta td {
+  vertical-align: top;
+  padding-right: 8px;
+  }
+  table.mail-meta td.label {
+  color: #999;
+  white-space: nowrap;
+  width: 60px;
+  }
+  table.mail-meta td.value {
+  word-break: break-all;
+  }
+  /* 分隔线 */
+  hr.mail-divider {
+  border: none;
+  border-top: 1px solid #ddd;
+  margin: 16px 0;
+  }
+  /* 邮件正文 */
+  .mail-body {
+  font-size: 14px;
+  line-height: 1.8;
+  }
+  .mail-body img {
+  max-width: 100%;
+  height: auto;
+  }
+  .mail-body table {
+  max-width: 100%;
+  }
+  /* 打印时优化 */
+  @media print {
+  body { padding: 0; }
+  }
   </style>
 </head>
 <body>
@@ -185,17 +185,17 @@ function buildMailHeader(msg: Message): string {
 
   // 构建元数据行（跳过空字段）
   const metaRows = [
-    metaRow('发件人', fromDisplay),
-    toDisplay ? metaRow('收件人', toDisplay) : '',
-    ccDisplay ? metaRow('抄  送', ccDisplay) : '',
-    dateDisplay ? metaRow('日  期', dateDisplay) : '',
+  metaRow('发件人', fromDisplay),
+  toDisplay ? metaRow('收件人', toDisplay) : '',
+  ccDisplay ? metaRow('抄  送', ccDisplay) : '',
+  dateDisplay ? metaRow('日  期', dateDisplay) : '',
   ].filter(Boolean).join('')
 
   return `
-    <h1 class="mail-subject">${escapeHtml(msg.subject || '(无主题)')}</h1>
-    <table class="mail-meta">
-      ${metaRows}
-    </table>
+  <h1 class="mail-subject">${escapeHtml(msg.subject || '(无主题)')}</h1>
+  <table class="mail-meta">
+  ${metaRows}
+  </table>
   `
 }
 
@@ -213,9 +213,9 @@ function metaRow(label: string, value: string): string {
  */
 function waitForRender(): Promise<void> {
   return new Promise(resolve => {
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => resolve())
-    })
+  requestAnimationFrame(() => {
+  requestAnimationFrame(() => resolve())
+  })
   })
 }
 
@@ -231,28 +231,28 @@ function waitForImages(container: HTMLElement | null): Promise<void> {
   if (images.length === 0) return Promise.resolve()
 
   return new Promise(resolve => {
-    let remaining = images.length
-    const timer = setTimeout(() => {
-      console.warn('[export-pdf] 图片加载超时，强制继续')
-      resolve()
-    }, 5000)
+  let remaining = images.length
+  const timer = setTimeout(() => {
+  console.warn('[export-pdf] 图片加载超时，强制继续')
+  resolve()
+  }, 5000)
 
-    const onDone = () => {
-      remaining--
-      if (remaining <= 0) {
-        clearTimeout(timer)
-        resolve()
-      }
-    }
+  const onDone = () => {
+  remaining--
+  if (remaining <= 0) {
+  clearTimeout(timer)
+  resolve()
+  }
+  }
 
-    images.forEach(img => {
-      if (img.complete) {
-        onDone()
-      } else {
-        img.addEventListener('load', onDone, { once: true })
-        img.addEventListener('error', onDone, { once: true })
-      }
-    })
+  images.forEach(img => {
+  if (img.complete) {
+  onDone()
+  } else {
+  img.addEventListener('load', onDone, { once: true })
+  img.addEventListener('error', onDone, { once: true })
+  }
+  })
   })
 }
 
@@ -263,8 +263,8 @@ function waitForImages(container: HTMLElement | null): Promise<void> {
  */
 function escapeHtml(str: string): string {
   return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
 }

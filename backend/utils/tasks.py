@@ -1,6 +1,6 @@
 """后台任务管理工具
 
-修复 Q1：fire-and-forget 任务未保存引用，可能被 GC 回收。
+fire-and-forget 任务需保存引用，否则可能被 GC 回收。
 提供 create_background_task 函数，自动保存任务引用并在完成时清理。
 """
 import asyncio

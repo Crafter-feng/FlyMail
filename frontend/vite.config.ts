@@ -15,26 +15,26 @@ export default defineConfig({
   plugins: [vue()],
   base: '/app/flymail/',
   define: {
-    'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion),
+  'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion),
   },
   build: {
-    outDir: '../dist/ui',
-    emptyOutDir: true,
+  outDir: '../dist/ui',
+  emptyOutDir: true,
   },
   server: {
-    port: 5173,
-    proxy: {
-      '/app/flymail/api': {
-        target: 'http://localhost:8080',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/app\/flymail/, ''),
-      },
-      '/app/flymail/ws': {
-        target: 'ws://localhost:8080',
-        ws: true,
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/app\/flymail/, ''),
-      },
-    },
+  port: 5173,
+  proxy: {
+  '/app/flymail/api': {
+  target: 'http://localhost:8080',
+  changeOrigin: true,
+  rewrite: (path) => path.replace(/^\/app\/flymail/, ''),
+  },
+  '/app/flymail/ws': {
+  target: 'ws://localhost:8080',
+  ws: true,
+  changeOrigin: true,
+  rewrite: (path) => path.replace(/^\/app\/flymail/, ''),
+  },
+  },
   },
 })

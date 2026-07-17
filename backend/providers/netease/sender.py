@@ -60,7 +60,7 @@ class NeteaseSender(MailSender):
         host = self._get_smtp_host(email_addr)
         port = self._get_smtp_port(email_addr)
         conn = IPv4SMTP_SSL(host, port, timeout=self.TIMEOUT)
-        # 修复 P5: 登录失败时关闭连接，防止 socket 泄漏
+        # 登录失败时关闭连接，防止 socket 泄漏
         try:
             conn.login(email_addr, auth_code)
             return conn

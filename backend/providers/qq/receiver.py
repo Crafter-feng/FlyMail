@@ -108,7 +108,7 @@ class QQReceiver(BaseIMAPReceiver):
     def _connect_imap(self, email_addr: str, auth_code: str) -> IPv4IMAP4_SSL:
         """同步建立 IMAP 连接（在线程池中运行，使用 IPv4 强制子类）"""
         conn = IPv4IMAP4_SSL(self._get_imap_host(), self._get_imap_port(), timeout=self.TIMEOUT)
-        # 修复 P5: 登录失败时关闭连接，防止 socket 泄漏
+        # 登录失败时关闭连接，防止 socket 泄漏
         try:
             conn.login(email_addr, auth_code)
             return conn
@@ -266,7 +266,7 @@ class QQReceiver(BaseIMAPReceiver):
         uid_set = b",".join(page_uids)
         status, msg_data = self._conn.uid(
             'FETCH', uid_set,
-            '(FLAGS BODY.PEEK[HEADER.FIELDS (SUBJECT FROM TO DATE)])'
+            self._LIST_FETCH_ITEMS,
         )
         if status != 'OK':
             return MessageList(messages=[], total=total, unread_total=unread_total, page=page, page_size=page_size)

@@ -54,7 +54,7 @@ class IPv4IMAP4_SSL(aioimaplib.IMAP4_SSL):
                 family=socket.AF_INET,  # 强制 IPv4
             )
         )
-        # 关键修复：给 _client_task 添加 done callback，retrieve 异常
+        # 给 _client_task 添加 done callback，retrieve 异常
         # SSL 握手失败（如 ConnectionResetError）时 Task 会带异常完成，
         # 若不 retrieve，Task 被 GC 回收时 asyncio 会报 "Task exception was never retrieved"
         def _on_client_task_done(task: asyncio.Task):
@@ -222,7 +222,7 @@ class IdleConnection:
     async def disconnect(self):
         """断开连接
 
-        关键修复：
+        断开策略：
         1. 不再用 asyncio.all_tasks() 全局扫描（会误杀其他账号的 IDLE 任务）
         2. 正常退出 IDLE 时先发送同步的 DONE，再等待 aioimaplib 的 idle future 完成
         3. 只有 DONE 后仍无法结束时才取消 future，避免破坏 aioimaplib 状态机
@@ -330,7 +330,7 @@ class IdleConnection:
         使用 aioimaplib 的 idle_start/wait_server_push/idle_done 三步 API。
         内置超时处理，不会出现 timed out object。
 
-        关键修复：idle_start() 返回的 future 是 aioimaplib 内部的 IDLE 命令任务。
+        说明：idle_start() 返回的 future 是 aioimaplib 内部的 IDLE 命令任务。
         正常轮转时必须先发送 DONE，再等待这个 future 完成，不能先 cancel。
 
         返回值：
@@ -664,7 +664,7 @@ class PollConnection:
         """
         import re as _re
         # 快速失败：连接已断开时直接返回 -1，不再尝试 STATUS 命令
-        # 关键修复：iCloud 有 5 个文件夹并行 Poll，当第一个文件夹发现连接断开并设置
+        # iCloud 有 5 个文件夹并行 Poll，当第一个文件夹发现连接断开并设置
         # self.connected=False 后，其他文件夹的并发任务下次调用本方法时若不检查 self.connected，
         # 会继续尝试 self.client.status()，导致连续 5 次 STATUS 失败日志
         if not self.connected or not self.client:

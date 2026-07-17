@@ -83,7 +83,7 @@ class NeteaseReceiver(BaseIMAPReceiver):
         host = self._get_imap_host(email_addr)
         port = self._get_imap_port(email_addr)
         conn = IPv4IMAP4_SSL(host, port, timeout=self.TIMEOUT)
-        # 修复 P5: 登录或 ID 命令失败时关闭连接，防止 socket 泄漏
+        # 登录或 ID 命令失败时关闭连接，防止 socket 泄漏
         try:
             conn.login(email_addr, auth_code)
             # 发送 IMAP ID 命令，告知网易服务器客户端身份信息
@@ -274,7 +274,7 @@ class NeteaseReceiver(BaseIMAPReceiver):
         uid_set = ",".join(str(u) for u in page_uids)
         status, msg_data = self._conn.uid(
             'FETCH', uid_set,
-            '(FLAGS BODY.PEEK[HEADER.FIELDS (SUBJECT FROM TO DATE)])'
+            self._LIST_FETCH_ITEMS,
         )
         if status != "OK":
             return MessageList(messages=[], total=total, unread_total=unread_total, page=page, page_size=page_size)

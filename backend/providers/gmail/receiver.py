@@ -27,18 +27,19 @@ class GmailReceiver(BaseIMAPReceiver):
     def _connect_imap(self, credentials: Credentials) -> imaplib.IMAP4_SSL:
         """同步建立 IMAP 连接
 
-        启用代理时通过 HTTP CONNECT 隧道连接（用于网络受限环境），
-        否则走 IPv4 直连。
+        代理从 Credentials.extra 按用户读取（proxy_url_from_extra），
+        不再使用进程全局 GMAIL_PROXY_*，避免多用户互相影响。
         """
-        if gmail_config.GMAIL_PROXY_ENABLED and gmail_config.GMAIL_PROXY_URL:
+        proxy_url = gmail_config.proxy_url_from_extra(credentials.extra)
+        if proxy_url:
             conn = ProxyIMAP4_SSL(
                 gmail_config.GMAIL_IMAP_HOST,
                 gmail_config.GMAIL_IMAP_PORT,
-                proxy_url=gmail_config.GMAIL_PROXY_URL,
+                proxy_url=proxy_url,
             )
         else:
             conn = IPv4IMAP4_SSL(gmail_config.GMAIL_IMAP_HOST, gmail_config.GMAIL_IMAP_PORT)
-        # 修复 P5: 认证失败时关闭连接，防止 socket 泄漏
+        # 认证失败时关闭连接，防止 socket 泄漏
         try:
             # 使用 OAuth2 认证
             auth_string = f"user={credentials.extra.get('email', '')}\x01auth=Bearer {credentials.access_token}\x01\x01"
@@ -48,8 +49,8 @@ class GmailReceiver(BaseIMAPReceiver):
             # 认证失败，关闭连接防止 socket 泄漏
             try:
                 conn.logout()
-            except Exception as e:
-                logger.debug("认证失败后关闭连接失败: %s", e)
+            except Exception:
+                pass
             raise
 
     async def fetch_folders(self) -> List[Folder]:
@@ -158,7 +159,7 @@ class GmailReceiver(BaseIMAPReceiver):
         uid_set = b",".join(page_uids)
         status, msg_data = self._conn.uid(
             'FETCH', uid_set,
-            '(FLAGS BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE)])'
+            self._LIST_FETCH_ITEMS,
         )
         if status != "OK":
             return MessageList(messages=[], total=total, unread_total=unread_total,

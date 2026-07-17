@@ -117,6 +117,9 @@ async def ensure_token(account, force_refresh: bool = False) -> Credentials:
     刷新失败时：
     - 瞬态错误（网络/5xx）→ 内部重试 2 次，仍失败则抛出 TokenRefreshError(is_permanent=False)
     - 永久错误（invalid_grant）→ 抛出 TokenRefreshError(is_permanent=True)
+
+    Gmail：返回前会把用户级代理注入 Credentials.extra（不落库），
+    供 receiver/sender/auth/IDLE 按用户隔离使用。
     """
     creds_data = json.loads(account.credentials_json)
     credentials = Credentials(
@@ -131,6 +134,31 @@ async def ensure_token(account, force_refresh: bool = False) -> Credentials:
     if account.provider not in ("gmail", "outlook"):
         return credentials
 
+
+    async def _with_user_proxy(creds: Credentials) -> Credentials:
+        """Gmail：运行时注入用户代理到 extra，不写入 credentials_json。"""
+        if account.provider != "gmail":
+            return creds
+        try:
+            from services.settings import (
+                apply_proxy_to_credentials_extra,
+                get_gmail_proxy_settings,
+            )
+            proxy_settings = await get_gmail_proxy_settings(
+                getattr(account, "user_uid", "") or ""
+            )
+            new_extra = apply_proxy_to_credentials_extra(creds.extra, proxy_settings)
+            return Credentials(
+                provider_type=creds.provider_type,
+                access_token=creds.access_token,
+                refresh_token=creds.refresh_token,
+                expires_at=creds.expires_at,
+                extra=new_extra,
+            )
+        except Exception as e:
+            logger.debug("注入 Gmail 用户代理失败（忽略）: %s", e)
+            return creds
+
     # 检查 token 是否即将过期（5 分钟内）
     # D4 设计说明：锁外检查用的是函数参数 credentials（来自 account.credentials_json），
     # 可能不是数据库最新值。但 5 分钟缓冲足够长：
@@ -139,7 +167,7 @@ async def ensure_token(account, force_refresh: bool = False) -> Credentials:
     # 这个设计避免了每次调用都加锁的性能开销，5 分钟窗口是合理的缓冲。
     # force_refresh=True 时跳过此检查，强制进入刷新流程（用于 IMAP 连接状态错乱等场景）
     if not force_refresh and credentials.expires_at > time.time() + 300:
-        return credentials
+        return await _with_user_proxy(credentials)
 
     # token 即将过期或已过期，需要刷新 —— 加锁防止并发刷新
     lock = _get_token_lock(account.id)
@@ -155,13 +183,13 @@ async def ensure_token(account, force_refresh: bool = False) -> Credentials:
             if fresh_expires_at > time.time() + 300:
                 # 其他协程已刷新成功，直接用新凭据
                 account.credentials_json = fresh_account.credentials_json
-                return Credentials(
+                return await _with_user_proxy(Credentials(
                     provider_type=account.provider,
                     access_token=fresh_creds_data.get("access_token", ""),
                     refresh_token=fresh_creds_data.get("refresh_token", ""),
                     expires_at=fresh_expires_at,
                     extra=fresh_creds_data.get("extra", {}),
-                )
+                ))
 
         # D4 修复：锁内确认仍需刷新时，优先用锁内重新读取的最新凭据，
         # 避免函数参数 credentials 过时导致 refresh_token 为空的误判
@@ -180,21 +208,34 @@ async def ensure_token(account, force_refresh: bool = False) -> Credentials:
         # 确认仍需刷新，用 refresh_token 刷新（内部已含重试逻辑）
         if not creds_to_refresh.refresh_token:
             logger.warning("%s token 过期且无 refresh_token: %s", account.provider, account.email)
-            return creds_to_refresh
+            return await _with_user_proxy(creds_to_refresh)
 
         try:
+            # 刷新前注入代理，auth 访问 Broker 时走用户代理
+            creds_to_refresh = await _with_user_proxy(creds_to_refresh)
             new_creds = await _do_refresh(account, creds_to_refresh)
             # 更新数据库中的凭据；Microsoft 可能轮换 refresh_token，需要一并保存
+            # 代理只存在于运行时 extra，不写入 credentials_json
+            persist_extra = dict(creds_data.get("extra") or {})
+            persist_extra.pop("gmail_proxy_enabled", None)
+            persist_extra.pop("gmail_proxy_url", None)
             creds_data["access_token"] = new_creds.access_token
             creds_data["expires_at"] = new_creds.expires_at
             if new_creds.refresh_token:
                 creds_data["refresh_token"] = new_creds.refresh_token
+            creds_data["extra"] = persist_extra
             new_json = json.dumps(creds_data)
             await update_account_credentials(account.id, new_json)
             # 同步更新内存中的 account 对象（避免下次还用过期值）
             account.credentials_json = new_json
             logger.info("%s token 已刷新: %s", account.provider, account.email)
-            return new_creds
+            return await _with_user_proxy(Credentials(
+                provider_type=new_creds.provider_type,
+                access_token=new_creds.access_token,
+                refresh_token=new_creds.refresh_token or creds_data.get("refresh_token", ""),
+                expires_at=new_creds.expires_at,
+                extra=persist_extra,
+            ))
         except TokenRefreshError:
             raise  # 已经是自定义异常，直接抛出
         except Exception as e:

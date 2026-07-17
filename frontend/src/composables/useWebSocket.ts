@@ -1,86 +1,146 @@
-/** WebSocket 连接管理 composable，处理连接、重连、心跳 */
-import { ref, onUnmounted } from 'vue'
+/** WebSocket 连接管理：模块级单例 + 引用计数 + 多播监听
+ *
+ * 多个页面/组件调用 useWebSocket 时共享同一条 /ws 连接，
+ * 避免同一标签开多条连接导致心跳与重连重复。
+ */
+import { ref, onUnmounted, type Ref } from 'vue'
 
 export interface WebSocketMessage {
   type: string
   [key: string]: any
 }
 
-export function useWebSocket(onMessage: (msg: WebSocketMessage) => void) {
-  const ws = ref<WebSocket | null>(null)
-  const wsConnected = ref(false)
-  let reconnectTimer: ReturnType<typeof setTimeout> | null = null
-  // 指数退避重连：初始3秒，每次翻倍，最大60秒
-  let wsReconnectDelay = 3000
-  const MAX_RECONNECT_DELAY = 60000
+type MessageListener = (msg: WebSocketMessage) => void
 
-  /** 建立 WebSocket 连接 */
-  function connect() {
-    if (ws.value) return
+// ---------- 模块级单例状态（全应用共享） ----------
+let sharedSocket: WebSocket | null = null
+const sharedConnected = ref(false)
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+// 指数退避重连：初始 3 秒，每次翻倍，最大 60 秒
+let reconnectDelay = 3000
+const MAX_RECONNECT_DELAY = 60000
+// 引用计数：有组件需要连接时 >0，归零则真正断开
+let refCount = 0
+// 业务消息多播：各组件注册自己的 onMessage
+const listeners = new Set<MessageListener>()
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    // 飞牛 OS 统一网关约定的 WebSocket 路径
-    const wsUrl = `${protocol}//${window.location.host}/app/flymail/ws`
+function clearReconnectTimer() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
+}
 
-    try {
-      const socket = new WebSocket(wsUrl)
+function buildWsUrl(): string {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  // 飞牛 OS 统一网关约定的 WebSocket 路径
+  return `${protocol}//${window.location.host}/app/flymail/ws`
+}
 
-      socket.onopen = () => {
-        wsConnected.value = true
-        // 连接成功，重置重连延迟
-        wsReconnectDelay = 3000
-      }
+/** 真正建立底层 WebSocket（仅单例内部调用） */
+function openSharedSocket() {
+  if (sharedSocket) return
+  if (refCount <= 0) return
 
-      socket.onmessage = (event) => {
-        try {
-          const data: WebSocketMessage = JSON.parse(event.data)
-          // 收到服务端心跳 ping，立即回复 pong 保持连接
-          if (data.type === 'ping') {
+  try {
+    const socket = new WebSocket(buildWsUrl())
+
+    socket.onopen = () => {
+      sharedConnected.value = true
+      reconnectDelay = 3000
+    }
+
+    socket.onmessage = (event) => {
+      try {
+        const data: WebSocketMessage = JSON.parse(event.data)
+        // 服务端心跳：统一回复 pong，不往业务层抛
+        if (data.type === 'ping') {
+          if (socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({ type: 'pong' }))
-            return
           }
-          // 非心跳消息交给业务回调处理
-          onMessage(data)
-        } catch {
-          // 忽略非 JSON 消息
+          return
         }
+        // 多播给所有已注册监听器
+        listeners.forEach((fn) => {
+          try {
+            fn(data)
+          } catch {
+            // 单个监听器异常不影响其他订阅者
+          }
+        })
+      } catch {
+        // 忽略非 JSON 消息
       }
+    }
 
-      socket.onclose = () => {
-        wsConnected.value = false
-        ws.value = null
-        // 指数退避重连
-        reconnectTimer = setTimeout(connect, wsReconnectDelay)
-        wsReconnectDelay = Math.min(wsReconnectDelay * 2, MAX_RECONNECT_DELAY)
+    socket.onclose = () => {
+      sharedConnected.value = false
+      sharedSocket = null
+      // 仍有订阅者时自动重连
+      if (refCount > 0) {
+        clearReconnectTimer()
+        reconnectTimer = setTimeout(() => {
+          openSharedSocket()
+        }, reconnectDelay)
+        reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY)
       }
+    }
 
-      socket.onerror = () => {
-        wsConnected.value = false
-      }
+    socket.onerror = () => {
+      sharedConnected.value = false
+    }
 
-      ws.value = socket
-    } catch {
-      // 连接创建失败，延迟重试
-      reconnectTimer = setTimeout(connect, wsReconnectDelay)
-      wsReconnectDelay = Math.min(wsReconnectDelay * 2, MAX_RECONNECT_DELAY)
+    sharedSocket = socket
+  } catch {
+    sharedSocket = null
+    sharedConnected.value = false
+    if (refCount > 0) {
+      clearReconnectTimer()
+      reconnectTimer = setTimeout(() => {
+        openSharedSocket()
+      }, reconnectDelay)
+      reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY)
     }
   }
+}
 
-  /** 断开 WebSocket 连接 */
+/** 释放一个引用；计数归零时断开连接 */
+function releaseShared() {
+  refCount = Math.max(0, refCount - 1)
+  if (refCount > 0) return
+  clearReconnectTimer()
+  if (sharedSocket) {
+    sharedSocket.onclose = null
+    sharedSocket.close()
+    sharedSocket = null
+  }
+  sharedConnected.value = false
+  reconnectDelay = 3000
+}
+
+/**
+ * 组件侧 API：注册监听 + 引用计数。
+ * connect/disconnect 只增减引用，真正连/断由模块单例管理。
+ */
+export function useWebSocket(onMessage: (msg: WebSocketMessage) => void) {
+  // 对外暴露与旧 API 兼容的 ref（指向共享连接状态）
+  const ws = ref<WebSocket | null>(null) as Ref<WebSocket | null>
+  const wsConnected = sharedConnected
+
+  function connect() {
+    listeners.add(onMessage)
+    refCount += 1
+    openSharedSocket()
+    ws.value = sharedSocket
+  }
+
   function disconnect() {
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer)
-      reconnectTimer = null
-    }
-    if (ws.value) {
-      ws.value.onclose = null // 阻止自动重连
-      ws.value.close()
-      ws.value = null
-    }
-    wsConnected.value = false
+    listeners.delete(onMessage)
+    releaseShared()
+    ws.value = sharedSocket
   }
 
-  // 组件卸载时自动断开连接
+  // 组件卸载时自动减引用、移除监听
   onUnmounted(() => {
     disconnect()
   })

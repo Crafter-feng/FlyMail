@@ -43,7 +43,7 @@ from routes.contacts import router as contacts_router
 from routes.folders import router as folders_router
 from routes.messages import router as messages_router
 from routes.notifications import router as notifications_router
-from routes.settings import router as settings_router, sync_gmail_config
+from routes.settings import router as settings_router
 from routes.signatures import router as signatures_router
 from routes.websocket import router as websocket_router
 
@@ -77,9 +77,8 @@ async def lifespan(app):
     # ---- startup ----
     await init_db()
 
-    # 加载本地 Gmail 网络代理设置并同步到 Provider 运行时配置。
-    settings = await async_load_settings()
-    sync_gmail_config(settings)
+    # Gmail 代理按用户存 user_settings，连接时经 Credentials.extra 注入，
+    # 启动阶段不写进程全局 gmail_config，避免多用户共用同一代理。
 
     # 非阻塞启动后台 IMAP 监听和定时发送调度器
     from utils.tasks import create_background_task

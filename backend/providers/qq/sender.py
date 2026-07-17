@@ -60,7 +60,7 @@ class QQSender(MailSender):
     def _connect_smtp(self, email_addr: str, auth_code: str) -> IPv4SMTP_SSL:
         """同步建立 SMTP 连接（在线程池中运行，使用 IPv4 强制子类）"""
         conn = IPv4SMTP_SSL(self._get_smtp_host(), self._get_smtp_port(), timeout=self.TIMEOUT)
-        # 修复 P5: 登录失败时关闭连接，防止 socket 泄漏
+        # 登录失败时关闭连接，防止 socket 泄漏
         try:
             conn.login(email_addr, auth_code)
             return conn

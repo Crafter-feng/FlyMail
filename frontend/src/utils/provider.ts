@@ -27,14 +27,14 @@ const SINA_ICON_SVG = '<svg width="16" height="16" viewBox="0 0 1024 1024"><path
 /** 获取邮箱平台图标 SVG 字符串 */
 export function providerIcon(provider: string): string {
   const map: Record<string, string> = {
-    gmail: GMAIL_ICON_SVG,
-    qq: QQ_ICON_SVG,
-    netease: NETEASE_ICON_SVG,
-    icloud: ICLOUD_ICON_SVG,
-    outlook: OUTLOOK_ICON_SVG,
-    sina: SINA_ICON_SVG,
-    // 自定义邮箱使用通用邮件图标（标准 IMAP/SMTP 协议）
-    custom: DEFAULT_ICON_SVG,
+  gmail: GMAIL_ICON_SVG,
+  qq: QQ_ICON_SVG,
+  netease: NETEASE_ICON_SVG,
+  icloud: ICLOUD_ICON_SVG,
+  outlook: OUTLOOK_ICON_SVG,
+  sina: SINA_ICON_SVG,
+  // 自定义邮箱使用通用邮件图标（标准 IMAP/SMTP 协议）
+  custom: DEFAULT_ICON_SVG,
   };
   return map[provider] || DEFAULT_ICON_SVG;
 }
@@ -42,13 +42,13 @@ export function providerIcon(provider: string): string {
 /** 获取邮箱平台名称 */
 export function providerName(provider: string): string {
   const map: Record<string, string> = {
-    gmail: 'Gmail',
-    outlook: 'Microsoft',
-    qq: '腾讯邮箱',
-    netease: '网易邮箱',
-    icloud: 'iCloud邮箱',
-    sina: '新浪邮箱',
-    custom: '自定义邮箱',
+  gmail: 'Gmail',
+  outlook: 'Microsoft',
+  qq: '腾讯邮箱',
+  netease: '网易邮箱',
+  icloud: 'iCloud邮箱',
+  sina: '新浪邮箱',
+  custom: '自定义邮箱',
   };
   return map[provider] || provider;
 }

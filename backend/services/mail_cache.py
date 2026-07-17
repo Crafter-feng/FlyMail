@@ -28,8 +28,78 @@ from utils.tasks import create_background_task
 
 logger = get_logger("cache")
 
+# 全量同步：分页拉满，避免只取首页 500 封导致大邮箱缺信
+FULL_SYNC_PAGE_SIZE = 500
+FULL_SYNC_MAX_PAGES = 40  # 上限约 20000 封，防止极端邮箱拖垮
+MISSING_BATCH_RETRIES = 2
+
 # 每个账号的同步锁，防止同一账号并发同步（IMAP 连接不能并发操作）
 _sync_locks: Dict[str, asyncio.Lock] = {}
+
+
+async def _fetch_all_message_pages(receiver, account: Account, folder: str):
+    """按页拉取直至凑齐 total 或达到页数上限（Gmail/QQ 等 page 语义）。
+
+    Outlook 的 page 语义不可靠，改走 UID 全量 + 分批摘要，避免漏信。
+    """
+    # Outlook：page 翻页会漏信，走 UID 分批路径
+    if getattr(account, "provider", "") == "outlook":
+        return await _fetch_all_messages_by_uids(receiver, account, folder)
+
+    all_messages: List[Message] = []
+    total = 0
+    unread = 0
+    for page in range(1, FULL_SYNC_MAX_PAGES + 1):
+        result = await receiver.fetch_messages(
+            folder, page=page, page_size=FULL_SYNC_PAGE_SIZE
+        )
+        total = result.total
+        unread = result.unread_total
+        batch = [m for m in result.messages if m.uid > 0]
+        if not batch:
+            break
+        all_messages.extend(batch)
+        if len(all_messages) >= total or len(batch) < FULL_SYNC_PAGE_SIZE:
+            break
+    # 按 UID 去重（分页重叠时）
+    seen: set[int] = set()
+    uniq: List[Message] = []
+    for m in all_messages:
+        if m.uid in seen:
+            continue
+        seen.add(m.uid)
+        uniq.append(m)
+    return uniq, total, unread
+
+
+async def _fetch_all_messages_by_uids(receiver, account: Account, folder: str):
+    """Outlook 等：UID 全量 + 分批摘要，避免错误 page 翻页漏信。"""
+    all_uids = await receiver.fetch_new_message_uids(folder, since_uid=0)
+    if not all_uids:
+        return [], 0, 0
+    # 优先用 STATUS/folder_counts 的未读数；失败再退到 UNSEEN UID 计数
+    unread = 0
+    try:
+        if hasattr(receiver, "fetch_folder_counts"):
+            counts = await receiver.fetch_folder_counts([folder])
+            folder_count = counts.get(folder, {}) if isinstance(counts, dict) else {}
+            unread = int(folder_count.get("unread", 0) or 0)
+        else:
+            unseen = set(await receiver.fetch_unseen_uids(folder))
+            unread = len(unseen)
+    except Exception:
+        try:
+            unseen = set(await receiver.fetch_unseen_uids(folder))
+            unread = len(unseen)
+        except Exception:
+            unread = 0
+    total = len(all_uids)
+    messages: List[Message] = []
+    for i in range(0, len(all_uids), FULL_SYNC_PAGE_SIZE):
+        chunk = all_uids[i:i + FULL_SYNC_PAGE_SIZE]
+        batch = await receiver.fetch_messages_by_uids(folder, chunk)
+        messages.extend([m for m in batch if m.uid > 0])
+    return messages, total, unread
 
 
 def _get_lock(account_id: str) -> asyncio.Lock:
@@ -94,18 +164,17 @@ async def _do_sync(receiver, account: Account, folder: str, force_full: bool = F
     # 首次同步判断：max_uid=0 且从未同步过（updated_at=0）。若 max_uid=0 但 updated_at≠0，说明曾经同步过但邮件被全部删除，走增量同步即可
     # force_full=True 时强制走全量同步（rebuild-sync 场景）
     if (max_uid == 0 and folder_stats["updated_at"] == 0) or force_full:
-        # 首次同步：全量拉取（批量 UID FETCH，最多500封）
+        # 首次/强制全量：分页或 UID 分批拉满，避免只取首页 500 封导致大邮箱缺信
         logger.info("首次同步: 账号=%s, 文件夹=%s, 全量拉取", account.email, folder)
         # 不再先删后写，避免中间时间窗口前端请求看到空缓存
         # 改为先写后删：写入新数据后，用 purge_deleted_from_cache 清理不在新数据中的旧记录
-        result = await receiver.fetch_messages(folder, page=1, page_size=500)
-        messages = [m for m in result.messages if m.uid > 0]
-        # 全量同步时，result.total 就是 IMAP 真实总数
-        total_count = result.total
-        unread_count = result.unread_total
+        messages, total_count, unread_count = await _fetch_all_message_pages(
+            receiver, account, folder
+        )
+        messages = [m for m in messages if m.uid > 0]
         # 只有当拉取了全部邮件时（messages 数量等于 total_count），才用 all_uids 做清理
         # 否则 all_uids 不完整，purge_deleted_from_cache 会误删未拉取的缓存
-        if len(messages) >= total_count:
+        if total_count > 0 and len(messages) >= total_count:
             all_uids = {m.uid for m in messages}
         else:
             all_uids = None  # 拉取不完整，不做清理
@@ -336,13 +405,23 @@ async def _do_sync(receiver, account: Account, folder: str, force_full: bool = F
                 "缓存不完整: 账号=%s, 文件夹=%s, IMAP总数=%d, 缓存行数=%d, 缺失 %d 封",
                 account.email, folder, total_count, cached_count, total_count - cached_count
             )
-            # 修复 D2：检测到缓存不完整时自动触发补全，旧代码仅记录警告
-            try:
-                supplemented = await _sync_missing_messages_unlocked(account, folder)
-                if supplemented > 0:
-                    logger.info("自动补全缓存: 账号=%s, 文件夹=%s, 补充 %d 封", account.email, folder, supplemented)
-            except Exception as e:
-                logger.warning("自动补全缓存失败: 账号=%s, 文件夹=%s, 错误=%s", account.email, folder, e)
+            # 缓存不完整时自动触发补全；整次补全最多重试 2 次，降低瞬态失败导致长期缺信
+            for attempt in range(2):
+                try:
+                    supplemented = await _sync_missing_messages_unlocked(account, folder)
+                    if supplemented > 0:
+                        logger.info(
+                            "自动补全缓存: 账号=%s, 文件夹=%s, 补充 %d 封 (attempt=%d)",
+                            account.email, folder, supplemented, attempt + 1,
+                        )
+                    cached_count = await get_cached_count(account.id, folder)
+                    if cached_count >= total_count:
+                        break
+                except Exception as e:
+                    logger.warning(
+                        "自动补全缓存失败: 账号=%s, 文件夹=%s, attempt=%d, 错误=%s",
+                        account.email, folder, attempt + 1, e,
+                    )
 
     return inserted_count
 
@@ -407,18 +486,34 @@ async def _sync_missing_messages_unlocked(account: Account, folder: str) -> int:
             logger.debug("获取未读 uid 列表失败，跳过 is_read 校正: %s", e)
         for i in range(0, len(missing_list), batch_size):
             batch = missing_list[i:i + batch_size]
-            try:
-                messages = await receiver.fetch_messages_by_uids(folder, batch)
-                messages = [m for m in messages if m.uid > 0]
-                if messages:
-                    # 用之前获取的 unseen_uids 校正 is_read
-                    for m in messages:
-                        m.is_read = m.uid not in unseen_uids
-                    cached = _messages_to_cached(messages, account)
-                    await upsert_cached_messages(cached)
-                    total_filled += len(messages)
-            except Exception as e:
-                logger.warning("补全同步批次失败: %s, UIDs=%s, 错误=%s", folder, batch[:5], e)
+            # 单批失败时有限重试，避免一整批缺失长期留在缓存外
+            last_err = None
+            for attempt in range(MISSING_BATCH_RETRIES + 1):
+                try:
+                    messages = await receiver.fetch_messages_by_uids(folder, batch)
+                    messages = [m for m in messages if m.uid > 0]
+                    if messages:
+                        # 用之前获取的 unseen_uids 校正 is_read
+                        for m in messages:
+                            m.is_read = m.uid not in unseen_uids
+                        cached = _messages_to_cached(messages, account)
+                        await upsert_cached_messages(cached)
+                        total_filled += len(messages)
+                    last_err = None
+                    break
+                except Exception as e:
+                    last_err = e
+                    if attempt < MISSING_BATCH_RETRIES:
+                        logger.warning(
+                            "补全同步批次失败将重试: %s, UIDs=%s, attempt=%d, 错误=%s",
+                            folder, batch[:5], attempt + 1, e,
+                        )
+                        await asyncio.sleep(0.3 * (attempt + 1))
+            if last_err is not None:
+                logger.warning(
+                    "补全同步批次失败: %s, UIDs=%s, 错误=%s",
+                    folder, batch[:5], last_err,
+                )
 
         if total_filled > 0:
             logger.info(
@@ -453,6 +548,8 @@ def _messages_to_cached(messages: List[Message], account: Account) -> List[Cache
             is_read=m.is_read,
             is_starred=m.is_starred,
             has_attachments=m.has_attachments,
+            # 列表摘要通常无 Message-ID；若详情已解析则一并写入
+            message_id=getattr(m, "message_id", "") or "",
             cached_at=time.time(),
         )
         for m in messages

@@ -39,6 +39,34 @@ _OUTLOOK_RECONNECTING_MSG = "邮箱连接异常，正在尝试重新连接，请
 # ==================== 通用工具函数 ====================
 
 
+def cached_has_body(cached: dict | None) -> bool:
+    """缓存是否已有可展示正文（HTML 或纯文本任一非空即命中）。
+
+    纯文本邮件只有 body_text，若只判断 body_html 会误判为未命中，
+    导致每次打开都重走 IMAP/备份。
+    """
+    if not cached:
+        return False
+    html = (cached.get("body_html") or "").strip()
+    text = (cached.get("body_text") or "").strip()
+    return bool(html or text)
+
+
+def normalize_rfc_message_id(value: str | None) -> str:
+    """规范化 RFC Message-ID：去空白，缺尖括号时补上。
+
+    用于回复 In-Reply-To / References，不能用 IMAP UID 顶替。
+    """
+    if not value:
+        return ""
+    mid = str(value).strip()
+    if not mid:
+        return ""
+    if not mid.startswith("<"):
+        mid = f"<{mid.strip('<>')}>"
+    return mid
+
+
 async def _safe_disconnect(receiver):
     """安全断开 IMAP 连接，失败不抛异常
 

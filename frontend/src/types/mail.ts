@@ -25,6 +25,8 @@ export interface Message {
   body_html?: string
   attachments?: Attachment[]
   has_attachments?: boolean
+  // RFC Message-ID（非 IMAP UID），回复时作为 In-Reply-To
+  message_id?: string
   account_id?: string // 聚合视图专用：邮件所属账号 ID
   account_email?: string // 聚合视图专用：邮件所属账号邮箱
   account_provider?: string // 聚合视图专用：邮件所属邮箱提供商

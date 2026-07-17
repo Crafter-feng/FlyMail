@@ -88,7 +88,7 @@ class ICloudReceiver(BaseIMAPReceiver):
         for attempt in range(max_ssl_retries):
             try:
                 conn = IPv4IMAP4_SSL(self.IMAP_HOST, self.IMAP_PORT, timeout=self.TIMEOUT)
-                # 修复 P5: 登录失败时关闭连接，防止 socket 泄漏
+                # 登录失败时关闭连接，防止 socket 泄漏
                 try:
                     conn.login(email_addr, auth_code)
                 except Exception:
@@ -290,7 +290,7 @@ class ICloudReceiver(BaseIMAPReceiver):
         uid_set = b",".join(page_uids)
         status, msg_data = self.conn.uid(
             'FETCH', uid_set,
-            '(FLAGS BODY.PEEK[HEADER.FIELDS (SUBJECT FROM TO DATE)])'
+            self._LIST_FETCH_ITEMS,
         )
         if status != 'OK':
             return MessageList(messages=[], total=total, unread_total=unread_total, page=page, page_size=page_size)

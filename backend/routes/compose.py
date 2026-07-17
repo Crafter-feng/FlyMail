@@ -33,6 +33,7 @@ from schemas import (
 from routes._helpers import (
     _find_account_or_error,
     _safe_disconnect,
+    normalize_rfc_message_id,  # 回复线程：规范化 In-Reply-To 的 RFC Message-ID
 )
 # _find_special_folder 依赖 IMAP fetch_folders，属于邮件操作专用工具，保留在 messages.py
 from routes.messages import (
@@ -55,7 +56,7 @@ async def list_scheduled_messages(request: Request):
     """获取当前用户的待执行定时发送任务"""
     user_uid = await get_uid(request)
     from services.scheduler import get_scheduled_jobs
-    # 安全修复 S4：按 user_uid 过滤，防止跨用户查看
+    # 按 user_uid 过滤，防止跨用户查看
     jobs = get_scheduled_jobs(user_uid)
     return {"jobs": jobs}
 
@@ -65,7 +66,7 @@ async def cancel_scheduled_message(request: Request, job_id: str):
     """取消指定的定时发送任务"""
     user_uid = await get_uid(request)
     from services.scheduler import cancel_scheduled_email
-    # 安全修复 S4：传入 user_uid 校验归属，防止跨用户取消
+    # 传入 user_uid 校验归属，防止跨用户取消
     ok = cancel_scheduled_email(job_id, user_uid)
     if not ok:
         raise AppError(404, "任务不存在或无权操作")
@@ -188,7 +189,8 @@ async def compose_message(request: Request, body: ComposeMessageRequest):
                 subject=body.subject,
                 body_html=body.body_html,
                 attachment_paths=attachment_paths,
-                in_reply_to=body.in_reply_to,
+                # 规范化为 RFC Message-ID（尖括号），禁止用 IMAP UID 顶替
+                in_reply_to=normalize_rfc_message_id(body.in_reply_to) or None,
                 run_time=run_time,
                 provider=account.provider,
                 email=account.email,
@@ -211,7 +213,8 @@ async def compose_message(request: Request, body: ComposeMessageRequest):
                 cc=body.cc or None,
                 bcc=body.bcc or None,
                 attachments=attachment_paths or None,
-                in_reply_to=body.in_reply_to,
+                # 规范化为 RFC Message-ID（尖括号），禁止用 IMAP UID 顶替
+                in_reply_to=normalize_rfc_message_id(body.in_reply_to) or None,
             )
         finally:
             try:

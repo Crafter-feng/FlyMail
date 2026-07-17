@@ -1,111 +1,111 @@
 <template>
   <div class="tiptap-editor">
-    <!-- 工具栏 -->
-    <div class="editor-toolbar" v-if="editor">
-      <template v-for="btn in toolbarButtons" :key="btn.name">
-        <!-- 下拉菜单按钮：字号/字体/颜色 -->
-        <div v-if="btn.isDropdown" class="toolbar-dropdown">
-          <button class="toolbar-btn" :title="btn.title" type="button">
-            <span v-if="btn.dropdownType === 'fontFamily'">{{ currentFontLabel }} <small>▼</small></span>
-            <span v-else-if="btn.dropdownType === 'fontSize'">{{ currentSizeLabel }} <small>▼</small></span>
-            <span v-else-if="btn.dropdownType === 'lineHeight'" class="dropdown-icon-label"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/><path d="M1 6h1M1 12h1M1 18h1" stroke-width="3"/></svg><small>▼</small></span>
-            <span v-else-if="btn.dropdownType === 'table'" class="dropdown-icon-label"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg><small>▼</small></span>
-            <span v-else-if="btn.dropdownType === 'color'" class="color-btn-inner">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16"/><path d="M9.354 4H14.646L18 16H6L9.354 4z"/></svg>
-              <span class="color-indicator" :style="{ background: currentColor }"></span>
-            </span>
-          </button>
-          <div class="dropdown-menu">
-            <!-- 字号下拉 -->
-            <template v-if="btn.dropdownType === 'fontSize'">
-              <button v-for="size in fontSizes" :key="size" class="dropdown-item" @click="applyFontSize(size)">
-                <span :style="{ fontSize: size }">{{ size }}</span>
-              </button>
-              <button class="dropdown-item" @click="applyFontSize(null)">默认</button>
-            </template>
-            <!-- 字体下拉 -->
-            <template v-if="btn.dropdownType === 'fontFamily'">
-              <button v-for="f in fontFamilies" :key="f.value" class="dropdown-item" :style="{ fontFamily: f.value || 'inherit' }" @click="applyFontFamily(f.value)">
-                {{ f.label }}
-              </button>
-            </template>
-            <!-- 行间距下拉 -->
-            <template v-if="btn.dropdownType === 'lineHeight'">
-              <button v-for="h in lineHeightOptions" :key="h.value" class="dropdown-item" @click="applyLineHeight(h.value)">
-                {{ h.label }}
-              </button>
-              <button class="dropdown-item" @click="applyLineHeight(null)">默认</button>
-            </template>
-            <!-- 颜色下拉 -->
-            <template v-if="btn.dropdownType === 'color'">
-              <div class="color-grid">
-                <button v-for="c in presetColors" :key="c" class="color-swatch" :style="{ background: c }" @click="applyColor(c)"></button>
-              </div>
-              <button class="dropdown-item" @click="applyColor(null)">默认颜色</button>
-            </template>
-            <!-- 表格操作下拉 -->
-            <template v-if="btn.dropdownType === 'table'">
-              <button class="dropdown-item" @click="editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()">插入表格</button>
-              <div class="dropdown-divider"></div>
-              <button class="dropdown-item" :disabled="!editor?.isActive('table')" @click="editor?.chain().focus().addRowBefore().run()">上方插入行</button>
-              <button class="dropdown-item" :disabled="!editor?.isActive('table')" @click="editor?.chain().focus().addRowAfter().run()">下方插入行</button>
-              <button class="dropdown-item" :disabled="!editor?.isActive('table')" @click="editor?.chain().focus().addColumnBefore().run()">左侧插入列</button>
-              <button class="dropdown-item" :disabled="!editor?.isActive('table')" @click="editor?.chain().focus().addColumnAfter().run()">右侧插入列</button>
-              <div class="dropdown-divider"></div>
-              <button class="dropdown-item" :disabled="!editor?.isActive('table')" @click="editor?.chain().focus().mergeCells().run()">合并单元格</button>
-              <button class="dropdown-item" :disabled="!editor?.isActive('table')" @click="editor?.chain().focus().splitCell().run()">拆分单元格</button>
-              <div class="dropdown-divider"></div>
-              <button class="dropdown-item danger" :disabled="!editor?.isActive('table')" @click="editor?.chain().focus().deleteRow().run()">删除行</button>
-              <button class="dropdown-item danger" :disabled="!editor?.isActive('table')" @click="editor?.chain().focus().deleteColumn().run()">删除列</button>
-              <button class="dropdown-item danger" :disabled="!editor?.isActive('table')" @click="editor?.chain().focus().deleteTable().run()">删除表格</button>
-            </template>
-          </div>
-        </div>
-        <!-- 普通按钮 -->
-        <button
-          v-else
-          class="toolbar-btn"
-          :class="{ active: btn.isActive?.() }"
-          @click="btn.action"
-          :title="btn.title"
-          type="button"
-        >
-          <span v-html="btn.icon"></span>
-        </button>
-      </template>
+  <!-- 工具栏 -->
+  <div class="editor-toolbar" v-if="editor">
+  <template v-for="btn in toolbarButtons" :key="btn.name">
+  <!-- 下拉菜单按钮：字号/字体/颜色 -->
+  <div v-if="btn.isDropdown" class="toolbar-dropdown">
+  <button class="toolbar-btn" :title="btn.title" type="button">
+  <span v-if="btn.dropdownType === 'fontFamily'">{{ currentFontLabel }} <small>▼</small></span>
+  <span v-else-if="btn.dropdownType === 'fontSize'">{{ currentSizeLabel }} <small>▼</small></span>
+  <span v-else-if="btn.dropdownType === 'lineHeight'" class="dropdown-icon-label"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/><path d="M1 6h1M1 12h1M1 18h1" stroke-width="3"/></svg><small>▼</small></span>
+  <span v-else-if="btn.dropdownType === 'table'" class="dropdown-icon-label"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg><small>▼</small></span>
+  <span v-else-if="btn.dropdownType === 'color'" class="color-btn-inner">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16"/><path d="M9.354 4H14.646L18 16H6L9.354 4z"/></svg>
+  <span class="color-indicator" :style="{ background: currentColor }"></span>
+  </span>
+  </button>
+  <div class="dropdown-menu">
+  <!-- 字号下拉 -->
+  <template v-if="btn.dropdownType === 'fontSize'">
+  <button v-for="size in fontSizes" :key="size" class="dropdown-item" @click="applyFontSize(size)">
+  <span :style="{ fontSize: size }">{{ size }}</span>
+  </button>
+  <button class="dropdown-item" @click="applyFontSize(null)">默认</button>
+  </template>
+  <!-- 字体下拉 -->
+  <template v-if="btn.dropdownType === 'fontFamily'">
+  <button v-for="f in fontFamilies" :key="f.value" class="dropdown-item" :style="{ fontFamily: f.value || 'inherit' }" @click="applyFontFamily(f.value)">
+  {{ f.label }}
+  </button>
+  </template>
+  <!-- 行间距下拉 -->
+  <template v-if="btn.dropdownType === 'lineHeight'">
+  <button v-for="h in lineHeightOptions" :key="h.value" class="dropdown-item" @click="applyLineHeight(h.value)">
+  {{ h.label }}
+  </button>
+  <button class="dropdown-item" @click="applyLineHeight(null)">默认</button>
+  </template>
+  <!-- 颜色下拉 -->
+  <template v-if="btn.dropdownType === 'color'">
+  <div class="color-grid">
+  <button v-for="c in presetColors" :key="c" class="color-swatch" :style="{ background: c }" @click="applyColor(c)"></button>
+  </div>
+  <button class="dropdown-item" @click="applyColor(null)">默认颜色</button>
+  </template>
+  <!-- 表格操作下拉 -->
+  <template v-if="btn.dropdownType === 'table'">
+  <button class="dropdown-item" @click="editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()">插入表格</button>
+  <div class="dropdown-divider"></div>
+  <button class="dropdown-item" :disabled="!editor?.isActive('table')" @click="editor?.chain().focus().addRowBefore().run()">上方插入行</button>
+  <button class="dropdown-item" :disabled="!editor?.isActive('table')" @click="editor?.chain().focus().addRowAfter().run()">下方插入行</button>
+  <button class="dropdown-item" :disabled="!editor?.isActive('table')" @click="editor?.chain().focus().addColumnBefore().run()">左侧插入列</button>
+  <button class="dropdown-item" :disabled="!editor?.isActive('table')" @click="editor?.chain().focus().addColumnAfter().run()">右侧插入列</button>
+  <div class="dropdown-divider"></div>
+  <button class="dropdown-item" :disabled="!editor?.isActive('table')" @click="editor?.chain().focus().mergeCells().run()">合并单元格</button>
+  <button class="dropdown-item" :disabled="!editor?.isActive('table')" @click="editor?.chain().focus().splitCell().run()">拆分单元格</button>
+  <div class="dropdown-divider"></div>
+  <button class="dropdown-item danger" :disabled="!editor?.isActive('table')" @click="editor?.chain().focus().deleteRow().run()">删除行</button>
+  <button class="dropdown-item danger" :disabled="!editor?.isActive('table')" @click="editor?.chain().focus().deleteColumn().run()">删除列</button>
+  <button class="dropdown-item danger" :disabled="!editor?.isActive('table')" @click="editor?.chain().focus().deleteTable().run()">删除表格</button>
+  </template>
+  </div>
+  </div>
+  <!-- 普通按钮 -->
+  <button
+  v-else
+  class="toolbar-btn"
+  :class="{ active: btn.isActive?.() }"
+  @click="btn.action"
+  :title="btn.title"
+  type="button"
+  >
+  <span v-html="btn.icon"></span>
+  </button>
+  </template>
 
-      <!-- Emoji 选择器 -->
-      <div class="toolbar-dropdown emoji-dropdown">
-        <button class="toolbar-btn" title="表情" type="button" @click="showEmojiPicker = !showEmojiPicker">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
-        </button>
-        <div v-if="showEmojiPicker" class="emoji-picker">
-          <!-- 分类标签 -->
-          <div class="emoji-tabs">
-            <button
-              v-for="(cat, i) in emojiCategories"
-              :key="cat.name"
-              class="emoji-tab"
-              :class="{ active: activeEmojiCategory === i }"
-              @click="activeEmojiCategory = i"
-              type="button"
-            >{{ cat.name }}</button>
-          </div>
-          <!-- Emoji 网格 -->
-          <div class="emoji-grid">
-            <button
-              v-for="emoji in emojiCategories[activeEmojiCategory].emojis"
-              :key="emoji"
-              class="emoji-btn"
-              @click="insertEmoji(emoji)"
-              type="button"
-            >{{ emoji }}</button>
-          </div>
-        </div>
-      </div>
-    </div>
-    <!-- 编辑区域 -->
-    <editor-content :editor="editor" class="editor-content" />
+  <!-- Emoji 选择器 -->
+  <div class="toolbar-dropdown emoji-dropdown">
+  <button class="toolbar-btn" title="表情" type="button" @click="showEmojiPicker = !showEmojiPicker">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+  </button>
+  <div v-if="showEmojiPicker" class="emoji-picker">
+  <!-- 分类标签 -->
+  <div class="emoji-tabs">
+  <button
+  v-for="(cat, i) in emojiCategories"
+  :key="cat.name"
+  class="emoji-tab"
+  :class="{ active: activeEmojiCategory === i }"
+  @click="activeEmojiCategory = i"
+  type="button"
+  >{{ cat.name }}</button>
+  </div>
+  <!-- Emoji 网格 -->
+  <div class="emoji-grid">
+  <button
+  v-for="emoji in emojiCategories[activeEmojiCategory].emojis"
+  :key="emoji"
+  class="emoji-btn"
+  @click="insertEmoji(emoji)"
+  type="button"
+  >{{ emoji }}</button>
+  </div>
+  </div>
+  </div>
+  </div>
+  <!-- 编辑区域 -->
+  <editor-content :editor="editor" class="editor-content" />
   </div>
 </template>
 
@@ -139,62 +139,62 @@ const emit = defineEmits<{
 const CustomTextStyle = TextStyle.extend({
   name: 'textStyle',
   addAttributes() {
-    return {
-      ...this.parent?.(),
-      // 字号属性
-      fontSize: {
-        default: null,
-        parseHTML: (element: HTMLElement) => element.style.fontSize?.replace(/['"]+/g, '') || null,
-        renderHTML: (attributes: Record<string, any>) => {
-          if (!attributes.fontSize) return {};
-          return { style: `font-size: ${attributes.fontSize}` };
-        },
-      },
-      // 行间距属性
-      lineHeight: {
-        default: null,
-        parseHTML: (element: HTMLElement) => element.style.lineHeight?.replace(/['"]+/g, '') || null,
-        renderHTML: (attributes: Record<string, any>) => {
-          if (!attributes.lineHeight) return {};
-          return { style: `line-height: ${attributes.lineHeight}` };
-        },
-      },
-    };
+  return {
+  ...this.parent?.(),
+  // 字号属性
+  fontSize: {
+  default: null,
+  parseHTML: (element: HTMLElement) => element.style.fontSize?.replace(/['"]+/g, '') || null,
+  renderHTML: (attributes: Record<string, any>) => {
+  if (!attributes.fontSize) return {};
+  return { style: `font-size: ${attributes.fontSize}` };
+  },
+  },
+  // 行间距属性
+  lineHeight: {
+  default: null,
+  parseHTML: (element: HTMLElement) => element.style.lineHeight?.replace(/['"]+/g, '') || null,
+  renderHTML: (attributes: Record<string, any>) => {
+  if (!attributes.lineHeight) return {};
+  return { style: `line-height: ${attributes.lineHeight}` };
+  },
+  },
+  };
   },
   addCommands() {
-    return {
-      // 设置字号
-      setFontSize: (size: string) => ({ chain }: { chain: () => any }) => chain().setMark('textStyle', { fontSize: size }).run(),
-      // 取消字号
-      unsetFontSize: () => ({ chain }: { chain: () => any }) => chain().setMark('textStyle', { fontSize: null }).removeEmptyTextStyle().run(),
-      // 设置行间距
-      setLineHeight: (height: string) => ({ chain }: { chain: () => any }) => chain().setMark('textStyle', { lineHeight: height }).run(),
-      // 取消行间距
-      unsetLineHeight: () => ({ chain }: { chain: () => any }) => chain().setMark('textStyle', { lineHeight: null }).removeEmptyTextStyle().run(),
-    } as any;
+  return {
+  // 设置字号
+  setFontSize: (size: string) => ({ chain }: { chain: () => any }) => chain().setMark('textStyle', { fontSize: size }).run(),
+  // 取消字号
+  unsetFontSize: () => ({ chain }: { chain: () => any }) => chain().setMark('textStyle', { fontSize: null }).removeEmptyTextStyle().run(),
+  // 设置行间距
+  setLineHeight: (height: string) => ({ chain }: { chain: () => any }) => chain().setMark('textStyle', { lineHeight: height }).run(),
+  // 取消行间距
+  unsetLineHeight: () => ({ chain }: { chain: () => any }) => chain().setMark('textStyle', { lineHeight: null }).removeEmptyTextStyle().run(),
+  } as any;
   },
 });
 
 // 自定义段落扩展：支持 indent 属性实现段落缩进
 const CustomParagraph = Paragraph.extend({
   addAttributes() {
-    return {
-      ...this.parent?.(),
-      indent: {
-        default: 0,
-        parseHTML: (element: HTMLElement) => {
-          const ml = element.style.marginLeft;
-          if (ml && ml.endsWith('px')) {
-            return Math.round(parseInt(ml) / 40);
-          }
-          return 0;
-        },
-        renderHTML: (attributes: Record<string, any>) => {
-          if (!attributes.indent || attributes.indent === 0) return {};
-          return { style: `margin-left: ${attributes.indent * 40}px` };
-        },
-      },
-    };
+  return {
+  ...this.parent?.(),
+  indent: {
+  default: 0,
+  parseHTML: (element: HTMLElement) => {
+  const ml = element.style.marginLeft;
+  if (ml && ml.endsWith('px')) {
+  return Math.round(parseInt(ml) / 40);
+  }
+  return 0;
+  },
+  renderHTML: (attributes: Record<string, any>) => {
+  if (!attributes.indent || attributes.indent === 0) return {};
+  return { style: `margin-left: ${attributes.indent * 40}px` };
+  },
+  },
+  };
   },
 });
 
@@ -203,35 +203,35 @@ let savedStoredMarks: any[] | null = null;
 
 const editor = useEditor({
   extensions: [
-    StarterKit.configure({
-      heading: { levels: [1, 2, 3] },
-      paragraph: false,
-    }),
-    CustomParagraph,
-    Underline,
-    CustomTextStyle,
-    Color,
-    FontFamily,
-    Table.configure({ resizable: true }),
-    TableRow,
-    TableCell,
-    TableHeader,
-    Link.configure({
-      openOnClick: false,
-      HTMLAttributes: { target: '_blank', rel: 'noopener noreferrer' },
-    }),
-    Image,
-    Placeholder.configure({
-      placeholder: '写点什么...',
-    }),
+  StarterKit.configure({
+  heading: { levels: [1, 2, 3] },
+  paragraph: false,
+  }),
+  CustomParagraph,
+  Underline,
+  CustomTextStyle,
+  Color,
+  FontFamily,
+  Table.configure({ resizable: true }),
+  TableRow,
+  TableCell,
+  TableHeader,
+  Link.configure({
+  openOnClick: false,
+  HTMLAttributes: { target: '_blank', rel: 'noopener noreferrer' },
+  }),
+  Image,
+  Placeholder.configure({
+  placeholder: '写点什么...',
+  }),
   ],
   content: props.modelValue || '',
   onUpdate: ({ editor }) => {
-    emit('update:modelValue', editor.getHTML());
+  emit('update:modelValue', editor.getHTML());
   },
   onBlur: ({ editor }) => {
-    // 失焦时保存 storedMarks，防止点击下拉菜单时丢失样式状态
-    savedStoredMarks = (editor as any).storedMarks ? [...(editor as any).storedMarks] : null;
+  // 失焦时保存 storedMarks，防止点击下拉菜单时丢失样式状态
+  savedStoredMarks = (editor as any).storedMarks ? [...(editor as any).storedMarks] : null;
   },
 });
 
@@ -242,9 +242,9 @@ const editor = useEditor({
  */
 const restoreStoredMarks = (e: any) => {
   if (savedStoredMarks && e.state.selection.empty) {
-    savedStoredMarks.forEach((mark: any) => {
-      e.commands.setStoredMark(mark);
-    });
+  savedStoredMarks.forEach((mark: any) => {
+  e.commands.setStoredMark(mark);
+  });
   }
 };
 
@@ -253,7 +253,7 @@ watch(() => props.modelValue, (val) => {
   if (!editor.value) return;
   const html = editor.value.getHTML();
   if (val !== undefined && val !== html) {
-    editor.value.commands.setContent(val, { emitUpdate: false });
+  editor.value.commands.setContent(val, { emitUpdate: false });
   }
 });
 
@@ -295,7 +295,7 @@ function insertEmoji(emoji: string) {
 function handleClickOutside(e: MouseEvent) {
   const target = e.target as HTMLElement;
   if (!target.closest('.emoji-dropdown')) {
-    showEmojiPicker.value = false;
+  showEmojiPicker.value = false;
   }
 }
 
@@ -359,9 +359,9 @@ const applyFontSize = (size: string | null) => {
   e.commands.focus();
   restoreStoredMarks(e);
   if (size) {
-    e.commands.setFontSize(size);
+  e.commands.setFontSize(size);
   } else {
-    e.commands.unsetFontSize();
+  e.commands.unsetFontSize();
   }
 };
 
@@ -371,9 +371,9 @@ const applyFontFamily = (family: string | null) => {
   e.commands.focus();
   restoreStoredMarks(e);
   if (family) {
-    e.commands.setFontFamily(family);
+  e.commands.setFontFamily(family);
   } else {
-    e.commands.unsetFontFamily();
+  e.commands.unsetFontFamily();
   }
 };
 
@@ -383,9 +383,9 @@ const applyLineHeight = (height: string | null) => {
   e.commands.focus();
   restoreStoredMarks(e);
   if (height) {
-    e.commands.setLineHeight(height);
+  e.commands.setLineHeight(height);
   } else {
-    e.commands.unsetLineHeight();
+  e.commands.unsetLineHeight();
   }
 };
 
@@ -395,174 +395,174 @@ const applyColor = (color: string | null) => {
   e.commands.focus();
   restoreStoredMarks(e);
   if (color) {
-    e.commands.setColor(color);
+  e.commands.setColor(color);
   } else {
-    e.commands.unsetColor();
+  e.commands.unsetColor();
   }
 };
 
 const toolbarButtons = [
   {
-    name: 'fontFamily',
-    title: '字体',
-    isDropdown: true,
-    dropdownType: 'fontFamily',
+  name: 'fontFamily',
+  title: '字体',
+  isDropdown: true,
+  dropdownType: 'fontFamily',
   },
   {
-    name: 'fontSize',
-    title: '字号',
-    isDropdown: true,
-    dropdownType: 'fontSize',
+  name: 'fontSize',
+  title: '字号',
+  isDropdown: true,
+  dropdownType: 'fontSize',
   },
   {
-    name: 'color',
-    title: '文字颜色',
-    isDropdown: true,
-    dropdownType: 'color',
+  name: 'color',
+  title: '文字颜色',
+  isDropdown: true,
+  dropdownType: 'color',
   },
   {
-    name: 'bold',
-    title: '加粗',
-    icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/></svg>',
-    action: () => editor.value?.chain().focus().toggleBold().run(),
-    isActive: () => editor.value?.isActive('bold'),
+  name: 'bold',
+  title: '加粗',
+  icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/></svg>',
+  action: () => editor.value?.chain().focus().toggleBold().run(),
+  isActive: () => editor.value?.isActive('bold'),
   },
   {
-    name: 'italic',
-    title: '斜体',
-    icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/></svg>',
-    action: () => editor.value?.chain().focus().toggleItalic().run(),
-    isActive: () => editor.value?.isActive('italic'),
+  name: 'italic',
+  title: '斜体',
+  icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/></svg>',
+  action: () => editor.value?.chain().focus().toggleItalic().run(),
+  isActive: () => editor.value?.isActive('italic'),
   },
   {
-    name: 'underline',
-    title: '下划线',
-    icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3v7a6 6 0 0 0 12 0V3"/><line x1="4" y1="21" x2="20" y2="21"/></svg>',
-    action: () => editor.value?.chain().focus().toggleUnderline().run(),
-    isActive: () => editor.value?.isActive('underline'),
+  name: 'underline',
+  title: '下划线',
+  icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3v7a6 6 0 0 0 12 0V3"/><line x1="4" y1="21" x2="20" y2="21"/></svg>',
+  action: () => editor.value?.chain().focus().toggleUnderline().run(),
+  isActive: () => editor.value?.isActive('underline'),
   },
   {
-    name: 'strike',
-    title: '删除线',
-    icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 4H9a3 3 0 0 0-3 3c0 1.5 1 2.5 2.5 3"/><line x1="4" y1="12" x2="20" y2="12"/><path d="M15 12c1.5.5 3 1.5 3 3a3 3 0 0 1-3 3H8"/></svg>',
-    action: () => editor.value?.chain().focus().toggleStrike().run(),
-    isActive: () => editor.value?.isActive('strike'),
+  name: 'strike',
+  title: '删除线',
+  icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 4H9a3 3 0 0 0-3 3c0 1.5 1 2.5 2.5 3"/><line x1="4" y1="12" x2="20" y2="12"/><path d="M15 12c1.5.5 3 1.5 3 3a3 3 0 0 1-3 3H8"/></svg>',
+  action: () => editor.value?.chain().focus().toggleStrike().run(),
+  isActive: () => editor.value?.isActive('strike'),
   },
   {
-    name: 'h1',
-    title: '标题1',
-    icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="M17 12l2-2v8"/></svg>',
-    action: () => editor.value?.chain().focus().toggleHeading({ level: 1 }).run(),
-    isActive: () => editor.value?.isActive('heading', { level: 1 }),
+  name: 'h1',
+  title: '标题1',
+  icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="M17 12l2-2v8"/></svg>',
+  action: () => editor.value?.chain().focus().toggleHeading({ level: 1 }).run(),
+  isActive: () => editor.value?.isActive('heading', { level: 1 }),
   },
   {
-    name: 'h2',
-    title: '标题2',
-    icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="M18 12c1.5-1.5 3-2 3-3.5a2 2 0 0 0-4 0"/><path d="M17 16h4"/></svg>',
-    action: () => editor.value?.chain().focus().toggleHeading({ level: 2 }).run(),
-    isActive: () => editor.value?.isActive('heading', { level: 2 }),
+  name: 'h2',
+  title: '标题2',
+  icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="M18 12c1.5-1.5 3-2 3-3.5a2 2 0 0 0-4 0"/><path d="M17 16h4"/></svg>',
+  action: () => editor.value?.chain().focus().toggleHeading({ level: 2 }).run(),
+  isActive: () => editor.value?.isActive('heading', { level: 2 }),
   },
   {
-    name: 'bulletList',
-    title: '无序列表',
-    icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/></svg>',
-    action: () => editor.value?.chain().focus().toggleBulletList().run(),
-    isActive: () => editor.value?.isActive('bulletList'),
+  name: 'bulletList',
+  title: '无序列表',
+  icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/></svg>',
+  action: () => editor.value?.chain().focus().toggleBulletList().run(),
+  isActive: () => editor.value?.isActive('bulletList'),
   },
   {
-    name: 'orderedList',
-    title: '有序列表',
-    icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><text x="2" y="8" font-size="8" fill="currentColor" stroke="none">1</text><text x="2" y="14" font-size="8" fill="currentColor" stroke="none">2</text><text x="2" y="20" font-size="8" fill="currentColor" stroke="none">3</text></svg>',
-    action: () => editor.value?.chain().focus().toggleOrderedList().run(),
-    isActive: () => editor.value?.isActive('orderedList'),
+  name: 'orderedList',
+  title: '有序列表',
+  icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><text x="2" y="8" font-size="8" fill="currentColor" stroke="none">1</text><text x="2" y="14" font-size="8" fill="currentColor" stroke="none">2</text><text x="2" y="20" font-size="8" fill="currentColor" stroke="none">3</text></svg>',
+  action: () => editor.value?.chain().focus().toggleOrderedList().run(),
+  isActive: () => editor.value?.isActive('orderedList'),
   },
   {
-    name: 'blockquote',
-    title: '引用',
-    icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M4.583 17.321C3.553 16.227 3 15 3 13.011c0-3.5 2.457-6.637 6.03-8.188l.893 1.378c-3.335 1.804-3.987 4.145-4.247 5.621.537-.278 1.24-.375 1.929-.311C9.591 11.689 11 13.166 11 15c0 1.933-1.567 3.5-3.5 3.5-1.22 0-2.36-.598-2.917-1.179zm10 0C13.553 16.227 13 15 13 13.011c0-3.5 2.457-6.637 6.03-8.188l.893 1.378c-3.335 1.804-3.987 4.145-4.247 5.621.537-.278 1.24-.375 1.929-.311C19.591 11.689 21 13.166 21 15c0 1.933-1.567 3.5-3.5 3.5-1.22 0-2.36-.598-2.917-1.179z"/></svg>',
-    action: () => editor.value?.chain().focus().toggleBlockquote().run(),
-    isActive: () => editor.value?.isActive('blockquote'),
+  name: 'blockquote',
+  title: '引用',
+  icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M4.583 17.321C3.553 16.227 3 15 3 13.011c0-3.5 2.457-6.637 6.03-8.188l.893 1.378c-3.335 1.804-3.987 4.145-4.247 5.621.537-.278 1.24-.375 1.929-.311C9.591 11.689 11 13.166 11 15c0 1.933-1.567 3.5-3.5 3.5-1.22 0-2.36-.598-2.917-1.179zm10 0C13.553 16.227 13 15 13 13.011c0-3.5 2.457-6.637 6.03-8.188l.893 1.378c-3.335 1.804-3.987 4.145-4.247 5.621.537-.278 1.24-.375 1.929-.311C19.591 11.689 21 13.166 21 15c0 1.933-1.567 3.5-3.5 3.5-1.22 0-2.36-.598-2.917-1.179z"/></svg>',
+  action: () => editor.value?.chain().focus().toggleBlockquote().run(),
+  isActive: () => editor.value?.isActive('blockquote'),
   },
   {
-    name: 'indent',
-    title: '增加缩进',
-    icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="1" y1="4" x2="15" y2="4"/><line x1="1" y1="9" x2="15" y2="9"/><line x1="1" y1="14" x2="15" y2="14"/><line x1="1" y1="19" x2="15" y2="19"/><path d="M19 8l4 4-4 4"/></svg>',
-    action: () => {
-      const e = editor.value;
-      if (!e) return;
-      if (e.isActive('listItem')) {
-        // 列表项缩进
-        (e.chain().focus() as any).sinkListItem('listItem').run();
-      } else if (e.isActive('paragraph')) {
-        // 段落缩进：增加 indent 属性
-        const currentIndent = (e.getAttributes('paragraph').indent as number) || 0;
-        e.chain().focus().updateAttributes('paragraph', { indent: currentIndent + 1 }).run();
-      }
-    },
-    isActive: () => false,
+  name: 'indent',
+  title: '增加缩进',
+  icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="1" y1="4" x2="15" y2="4"/><line x1="1" y1="9" x2="15" y2="9"/><line x1="1" y1="14" x2="15" y2="14"/><line x1="1" y1="19" x2="15" y2="19"/><path d="M19 8l4 4-4 4"/></svg>',
+  action: () => {
+  const e = editor.value;
+  if (!e) return;
+  if (e.isActive('listItem')) {
+  // 列表项缩进
+  (e.chain().focus() as any).sinkListItem('listItem').run();
+  } else if (e.isActive('paragraph')) {
+  // 段落缩进：增加 indent 属性
+  const currentIndent = (e.getAttributes('paragraph').indent as number) || 0;
+  e.chain().focus().updateAttributes('paragraph', { indent: currentIndent + 1 }).run();
+  }
+  },
+  isActive: () => false,
   },
   {
-    name: 'outdent',
-    title: '减少缩进',
-    icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="1" y1="4" x2="15" y2="4"/><line x1="1" y1="9" x2="15" y2="9"/><line x1="1" y1="14" x2="15" y2="14"/><line x1="1" y1="19" x2="15" y2="19"/><path d="M23 8l-4 4 4 4"/></svg>',
-    action: () => {
-      const e = editor.value;
-      if (!e) return;
-      if (e.isActive('listItem')) {
-        // 列表项减少缩进
-        (e.chain().focus() as any).liftListItem('listItem').run();
-      } else if (e.isActive('paragraph')) {
-        // 段落减少缩进
-        const currentIndent = (e.getAttributes('paragraph').indent as number) || 0;
-        if (currentIndent > 0) {
-          e.chain().focus().updateAttributes('paragraph', { indent: currentIndent - 1 }).run();
-        }
-      }
-    },
-    isActive: () => false,
+  name: 'outdent',
+  title: '减少缩进',
+  icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="1" y1="4" x2="15" y2="4"/><line x1="1" y1="9" x2="15" y2="9"/><line x1="1" y1="14" x2="15" y2="14"/><line x1="1" y1="19" x2="15" y2="19"/><path d="M23 8l-4 4 4 4"/></svg>',
+  action: () => {
+  const e = editor.value;
+  if (!e) return;
+  if (e.isActive('listItem')) {
+  // 列表项减少缩进
+  (e.chain().focus() as any).liftListItem('listItem').run();
+  } else if (e.isActive('paragraph')) {
+  // 段落减少缩进
+  const currentIndent = (e.getAttributes('paragraph').indent as number) || 0;
+  if (currentIndent > 0) {
+  e.chain().focus().updateAttributes('paragraph', { indent: currentIndent - 1 }).run();
+  }
+  }
+  },
+  isActive: () => false,
   },
   {
-    name: 'lineHeight',
-    title: '行间距',
-    isDropdown: true,
-    dropdownType: 'lineHeight',
+  name: 'lineHeight',
+  title: '行间距',
+  isDropdown: true,
+  dropdownType: 'lineHeight',
   },
   {
-    name: 'hr',
-    title: '插入分割线',
-    icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="2" y1="12" x2="22" y2="12"/></svg>',
-    action: () => editor.value?.chain().focus().setHorizontalRule().run(),
-    isActive: () => false,
+  name: 'hr',
+  title: '插入分割线',
+  icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="2" y1="12" x2="22" y2="12"/></svg>',
+  action: () => editor.value?.chain().focus().setHorizontalRule().run(),
+  isActive: () => false,
   },
   {
-    name: 'table',
-    title: '表格',
-    isDropdown: true,
-    dropdownType: 'table',
+  name: 'table',
+  title: '表格',
+  isDropdown: true,
+  dropdownType: 'table',
   },
   {
-    name: 'link',
-    title: '插入链接',
-    icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>',
-    action: () => {
-      const url = window.prompt('输入链接地址:', 'https://');
-      if (url) {
-        editor.value?.chain().focus().setLink({ href: url }).run();
-      }
-    },
-    isActive: () => editor.value?.isActive('link'),
+  name: 'link',
+  title: '插入链接',
+  icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>',
+  action: () => {
+  const url = window.prompt('输入链接地址:', 'https://');
+  if (url) {
+  editor.value?.chain().focus().setLink({ href: url }).run();
+  }
+  },
+  isActive: () => editor.value?.isActive('link'),
   },
   {
-    name: 'image',
-    title: '插入图片',
-    icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>',
-    action: () => {
-      const url = window.prompt('输入图片地址:', 'https://');
-      if (url) {
-        editor.value?.chain().focus().setImage({ src: url }).run();
-      }
-    },
-    isActive: () => false,
+  name: 'image',
+  title: '插入图片',
+  icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>',
+  action: () => {
+  const url = window.prompt('输入图片地址:', 'https://');
+  if (url) {
+  editor.value?.chain().focus().setImage({ src: url }).run();
+  }
+  },
+  isActive: () => false,
   },
 ];
 </script>
@@ -890,22 +890,22 @@ const toolbarButtons = [
 /* ==================== 手机端 emoji 选择器覆盖 ==================== */
 @media (max-width: 768px) {
   .emoji-picker {
-    position: fixed !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
-    top: auto !important;
-    width: 100% !important;
-    max-height: 45vh !important;
-    margin-top: 0 !important;
-    border-radius: 12px 12px 0 0 !important;
-    z-index: 1000 !important;
-    padding: 10px 12px 16px !important;
-    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15) !important;
+  position: fixed !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  top: auto !important;
+  width: 100% !important;
+  max-height: 45vh !important;
+  margin-top: 0 !important;
+  border-radius: 12px 12px 0 0 !important;
+  z-index: 1000 !important;
+  padding: 10px 12px 16px !important;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15) !important;
   }
 
   .emoji-grid {
-    max-height: calc(45vh - 60px) !important;
+  max-height: calc(45vh - 60px) !important;
   }
 }
 </style>

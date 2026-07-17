@@ -30,10 +30,10 @@ router = APIRouter(tags=["签名"])
 async def get_signature(request: Request):
     """获取当前用户的邮件签名配置
 
-    修复 D1：signature_html/signature_enabled 改为按 user_uid 存储在 user_settings 表
+    signature_html/signature_enabled 按 user_uid 存储在 user_settings 表
     """
     uid = await get_uid(request)
-    # 从用户级配置表读取（D1 修复）
+    # 从用户级配置表读取（按 user_uid 隔离）
     user_settings = await get_user_settings(uid, ["signature_html", "signature_enabled"])
     return {
         "signature_html": user_settings.get("signature_html", ""),
@@ -45,10 +45,10 @@ async def get_signature(request: Request):
 async def save_signature(request: Request, body: SignatureSettingsRequest = Body(default_factory=SignatureSettingsRequest, description="邮件签名设置")):
     """保存邮件签名配置
 
-    修复 D1：signature_html/signature_enabled 改为按 user_uid 存储在 user_settings 表
+    signature_html/signature_enabled 按 user_uid 存储在 user_settings 表
     """
     uid = await get_uid(request)
-    # 写入用户级配置表（D1 修复）
+    # 写入用户级配置表（按 user_uid 隔离）
     await set_user_settings(uid, {
         "signature_html": body.signature_html,
         "signature_enabled": 1 if body.signature_enabled else 0,
@@ -63,7 +63,7 @@ async def save_signature(request: Request, body: SignatureSettingsRequest = Body
 async def get_signatures_api(request: Request):
     """获取当前用户的所有签名模板列表"""
     uid = await get_uid(request)
-    # 安全修复 S3：按 user_uid 过滤，防止跨用户数据泄露
+    # 按 user_uid 过滤，防止跨用户数据泄露
     sigs = await get_signatures(uid)
     return {
         "signatures": [
@@ -91,7 +91,7 @@ async def create_signature_api(request: Request, body: SignatureTemplateRequest 
         content_html=body.content_html,
         is_default=1 if body.is_default else 0,
         account_id=body.account_id,
-        user_uid=uid,  # 安全修复 S3：绑定当前用户
+        user_uid=uid,  # 绑定当前用户
     )
     sig = await create_signature(sig)
     return {
@@ -107,7 +107,7 @@ async def create_signature_api(request: Request, body: SignatureTemplateRequest 
 async def update_signature_api(request: Request, sig_id: int, body: SignatureTemplateUpdateRequest = Body(default_factory=SignatureTemplateUpdateRequest, description="签名模板内容")):
     """更新指定签名模板"""
     uid = await get_uid(request)
-    # 安全修复 S3：查询时校验 user_uid 归属，防止越权修改
+    # 查询时校验 user_uid 归属，防止越权修改
     existing = await get_signature_by_id(sig_id, uid)
     if not existing:
         raise AppError(404, "签名模板不存在")
@@ -131,7 +131,7 @@ async def update_signature_api(request: Request, sig_id: int, body: SignatureTem
 async def delete_signature_api(request: Request, sig_id: int):
     """删除指定签名模板"""
     uid = await get_uid(request)
-    # 安全修复 S3：删除时校验 user_uid 归属，防止越权删除
+    # 删除时校验 user_uid 归属，防止越权删除
     ok = await delete_signature(sig_id, uid)
     if not ok:
         raise AppError(404, "签名模板不存在或删除失败")

@@ -27,15 +27,15 @@ class GmailAuthProvider(AuthProvider):
         """Gmail 授权码换 token 已迁移到 Cloudflare Broker，本地不再直连 Google token endpoint。"""
         raise ValueError("Gmail OAuth 回调必须通过 Cloudflare Broker 交换 broker_code。")
 
-    def _get_http_proxy(self):
+    def _get_http_proxy(self, credentials: Credentials | None = None):
         """获取 httpx 代理参数
 
-        启用代理且配置了代理地址时返回代理 URL，否则返回 None（直连）。
-        用于 OAuth2 的 token 交换、userinfo 获取、token 刷新。
+        优先从 Credentials.extra（用户级）读取；无则空（直连）。
+        不再读进程全局 GMAIL_PROXY_*。
         """
-        if gmail_config.GMAIL_PROXY_ENABLED and gmail_config.GMAIL_PROXY_URL:
-            return gmail_config.GMAIL_PROXY_URL
-        return None
+        extra = credentials.extra if credentials else None
+        url = gmail_config.proxy_url_from_extra(extra)
+        return url or None
 
     async def refresh_token(self, credentials: Credentials) -> Credentials:
         """通过 Cloudflare Broker 刷新 Gmail 访问令牌。
@@ -49,7 +49,9 @@ class GmailAuthProvider(AuthProvider):
         logger.debug("通过 OAuth Broker 刷新 Gmail access_token")
 
         try:
-            async with httpx.AsyncClient(timeout=30.0, proxy=self._get_http_proxy()) as client:
+            async with httpx.AsyncClient(
+                timeout=30.0, proxy=self._get_http_proxy(credentials)
+            ) as client:
                 response = await client.post(
                     f"{OAUTH_BROKER_URL.rstrip('/')}/oauth/refresh",
                     json={

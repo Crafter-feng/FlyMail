@@ -22,6 +22,7 @@ from services.backup import (
     archive_single_account,
     get_available_backup_dirs,
     parse_eml_to_message,
+    resolve_eml_under_backup_root,
 )
 from utils.logger import get_logger
 from utils.tasks import create_background_task
@@ -278,11 +279,12 @@ async def get_archived_detail(
         return {"error": "归档记录不存在"}
 
     # 读取 .eml 文件（无授权目录时无法读取，提示用户先授权）
+    # 相对路径必须经 resolve_eml_under_backup_root，防止路径穿越读出备份根外文件
     backup_root = await get_backup_root_async(user_uid)
     if backup_root is None:
         return {"error": "无飞牛授权目录，无法读取备份文件"}
-    eml_path = backup_root / archive["eml_path"]
-    if not eml_path.exists():
+    eml_path = resolve_eml_under_backup_root(backup_root, archive.get("eml_path"))
+    if eml_path is None or not eml_path.exists():
         return {"error": ".eml 文件不存在"}
 
     # 解析 .eml（复用 base_imap 的解析逻辑）

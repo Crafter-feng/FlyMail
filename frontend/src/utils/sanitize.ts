@@ -24,18 +24,18 @@ const ALLOWED_ATTR = [
  *
  * 解决飞牛 OS 桌面端（嵌入式 WebView）中邮件链接无法跳转的问题：
  * 1. 邮件 HTML 中的 <a> 大多没有 target="_blank"，默认 _self 会在当前 WebView 内导航，
- *    被飞牛桌面壳的安全策略拦截，导致点击无反应
+ *  被飞牛桌面壳的安全策略拦截，导致点击无反应
  * 2. 强制 target="_blank" 让链接在新窗口打开，配合 rel="noopener noreferrer" 防止
- *    新窗口通过 window.opener 引用原窗口（安全加固）
+ *  新窗口通过 window.opener 引用原窗口（安全加固）
  *
  * 钩子是全局的，但本模块只加载一次，不会重复注册。
  */
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   if (node.tagName === 'A') {
-    // 强制在新窗口打开，避免在当前 WebView 内导航被拦截
-    node.setAttribute('target', '_blank')
-    // 安全加固：防止新窗口通过 window.opener 操作原窗口
-    node.setAttribute('rel', 'noopener noreferrer')
+  // 强制在新窗口打开，避免在当前 WebView 内导航被拦截
+  node.setAttribute('target', '_blank')
+  // 安全加固：防止新窗口通过 window.opener 操作原窗口
+  node.setAttribute('rel', 'noopener noreferrer')
   }
 })
 
@@ -43,9 +43,9 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
 export function sanitizeHtml(html: string | undefined | null): string {
   if (!html) return ''
   return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS,
-    ALLOWED_ATTR,
-    ALLOW_DATA_ATTR: false,
+  ALLOWED_TAGS,
+  ALLOWED_ATTR,
+  ALLOW_DATA_ATTR: false,
   })
 }
 
@@ -68,8 +68,8 @@ export function handleMailLinkClick(e: MouseEvent) {
   const href = link.getAttribute('href') || ''
   // 只允许 http/https/mailto 协议，拦截 javascript:、data: 等危险协议
   if (!/^(https?:|mailto:)/i.test(href)) {
-    e.preventDefault()
-    return
+  e.preventDefault()
+  return
   }
 
   // 阻止默认导航（避免在当前 WebView 内跳转被飞牛桌面壳拦截导致白屏）

@@ -79,12 +79,10 @@ class MailSyncService:
         按 user_uid 过滤：有 uid 时只推给匹配的用户，无 uid 时推给所有。
         发送失败的客户端自动移除。
 
-        安全修复 S7：旧代码 `if user_uid and uid and uid != user_uid` 在 uid 为空时
-        条件为 False，导致未鉴权客户端收到所有用户定向消息。
-        修复：改为 `if user_uid and uid != user_uid`，uid 为空时也跳过。
+        过滤规则：`if user_uid and uid != user_uid` —— 请求带了目标用户时，
+        未鉴权（uid 为空）或非目标用户的连接一律跳过，避免串消息。
 
-        修复 P7：旧代码串行 `await ws.send_text()`，慢客户端阻塞全部。
-        修复：改用 asyncio.gather 并发发送。
+        发送方式：asyncio.gather 并发，避免慢客户端阻塞全部推送。
         """
         # 筛选目标客户端
         targets = [
@@ -390,7 +388,8 @@ class MailSyncService:
         from providers.outlook.receiver import _create_outlook_ssl_context
 
         if account.provider == "gmail":
-            proxy_url = gmail_config.GMAIL_PROXY_URL if gmail_config.GMAIL_PROXY_ENABLED else ""
+            # 代理从用户级 Credentials.extra 读取，不用进程全局配置
+            proxy_url = gmail_config.proxy_url_from_extra(credentials.extra)
             return {
                 "host": gmail_config.GMAIL_IMAP_HOST, "port": gmail_config.GMAIL_IMAP_PORT,
                 "email": credentials.extra.get("email", ""),
@@ -813,8 +812,8 @@ class MailSyncService:
                             for folder, conn in poll_conns.items()
                         }
                         done, _ = await asyncio.wait(tasks.values(), return_when=asyncio.FIRST_COMPLETED)
-                        # 取消其余任务并等待清理完成，避免 "Task was destroyed but it is pending" 错误
-                        # （与 IDLE 模式保持一致，旧代码缺少 gather 导致被 cancel 的任务未被 retrieve）
+                        # 取消其余任务并 await 清理完成，避免 "Task was destroyed but it is pending"
+                        # （与 IDLE 模式一致：cancel 后须 gather 回收任务）
                         for task in tasks.values():
                             if not task.done():
                                 task.cancel()
@@ -929,8 +928,7 @@ class MailSyncService:
                     from services.idle_manager import idle_manager
                     await idle_manager.remove(account.id)
                 elif use_poll:
-                    # 清理该账号的所有 Poll 连接（与 IDLE 模式保持一致）
-                    # 旧代码只清理 poll_conn，poll_conns 中的其他连接会泄漏
+                    # 清理该账号的全部 Poll 连接（与 IDLE 的 remove 一致，避免多连接泄漏）
                     from services.idle_manager import poll_manager
                     await poll_manager.remove(account.id)
                     poll_conn = None

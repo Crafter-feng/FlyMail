@@ -1,344 +1,344 @@
 <template>
   <div class="mail-view">
-    <!-- 多账号 Tab 切换 -->
-    <draggable
-      v-if="mailStore.accounts.length > 1"
-      v-model="mailStore.accounts"
-      item-key="id"
-      handle=".account-tab"
-      ghost-class="account-tab-ghost"
-      animation="150"
-      tag="div"
-      class="account-tabs"
-      :disabled="isMobile"
-      @end="onAccountDragEnd"
-    >
-      <template #item="{ element: acc }">
-        <div class="account-tab-wrapper">
-          <button
-            class="account-tab"
-            :class="{ active: mailStore.currentAccountId === acc.id }"
-            @click="switchAccount(acc.id)"
-          >
-            <span class="account-icon" :class="acc.provider" v-html="providerIcon(acc.provider)"></span>
-            <span class="account-email">{{ acc.email }}</span>
-          </button>
-          <button v-if="mailStore.reauthAccountIds.has(acc.id)" class="btn-reauth" @click.stop="reauthorize(acc.id)" title="重新授权">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-          </button>
-        </div>
-      </template>
-    </draggable>
+  <!-- 多账号 Tab 切换 -->
+  <draggable
+  v-if="mailStore.accounts.length > 1"
+  v-model="mailStore.accounts"
+  item-key="id"
+  handle=".account-tab"
+  ghost-class="account-tab-ghost"
+  animation="150"
+  tag="div"
+  class="account-tabs"
+  :disabled="isMobile"
+  @end="onAccountDragEnd"
+  >
+  <template #item="{ element: acc }">
+  <div class="account-tab-wrapper">
+  <button
+  class="account-tab"
+  :class="{ active: mailStore.currentAccountId === acc.id }"
+  @click="switchAccount(acc.id)"
+  >
+  <span class="account-icon" :class="acc.provider" v-html="providerIcon(acc.provider)"></span>
+  <span class="account-email">{{ acc.email }}</span>
+  </button>
+  <button v-if="mailStore.reauthAccountIds.has(acc.id)" class="btn-reauth" @click.stop="reauthorize(acc.id)" title="重新授权">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+  </button>
+  </div>
+  </template>
+  </draggable>
 
-    <!-- 单账号重新授权提示（多账号时 Tab 栏已有按钮，此处仅单账号显示） -->
-    <div v-if="mailStore.accounts.length === 1 && mailStore.reauthAccountIds.has(mailStore.currentAccountId)" class="reauth-banner">
-      <span>账号授权已过期</span>
-      <button class="btn btn-primary btn-sm" @click="reauthorize(mailStore.currentAccountId)">重新授权</button>
-    </div>
+  <!-- 单账号重新授权提示（多账号时 Tab 栏已有按钮，此处仅单账号显示） -->
+  <div v-if="mailStore.accounts.length === 1 && mailStore.reauthAccountIds.has(mailStore.currentAccountId)" class="reauth-banner">
+  <span>账号授权已过期</span>
+  <button class="btn btn-primary btn-sm" @click="reauthorize(mailStore.currentAccountId)">重新授权</button>
+  </div>
 
-    <!-- 邮件列表视图 -->
-    <div v-if="!selectedMessage" class="mail-list">
-      <!-- 普通模式工具栏 -->
-      <div v-if="!selectMode" class="list-toolbar">
-        <div class="toolbar-left">
-          <!-- 多选图标按钮 -->
-          <button class="btn-icon" @click="enterSelectMode()" title="多选">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
-            </svg>
-          </button>
-          <!-- 移动端：iOS风格文件夹选择器 -->
-          <button v-if="isMobile" class="folder-picker" @click="showFolderSheet = true">
-            <span class="picker-label">{{ mailStore.currentFolderName }}</span>
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6 9 12 15 18 9"/></svg>
-          </button>
-          <!-- 桌面端：文件夹名+数量 -->
-          <span v-else class="list-count">{{ mailStore.currentFolderName }} · {{ totalMessages }}封</span>
-          <!-- 筛选按钮 -->
-          <span class="toolbar-divider"></span>
-          <button class="filter-btn" :class="{ active: readFilter === '' && !attachmentFilter }" @click="setReadFilter('')">全部 {{ filterCounts.all }}</button>
-          <button class="filter-btn" :class="{ active: readFilter === 'unread' }" @click="setReadFilter('unread')">未读 {{ filterCounts.unread }}</button>
-          <button class="filter-btn" :class="{ active: readFilter === 'read' }" @click="setReadFilter('read')">已读 {{ filterCounts.read }}</button>
-          <button class="filter-btn" :class="{ active: attachmentFilter }" @click="setAttachmentFilter()">附件 {{ filterCounts.attachments }}</button>
-        </div>
-        <div class="toolbar-right">
-          <!-- 移动端：筛选展开/收起按钮 -->
-          <button class="btn-icon mobile-filter-toggle" :class="{ active: hasActiveFilter }" @click="showMobileFilters = !showMobileFilters">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-          </button>
-          <!-- 一键全部已读：直接操作 IMAP 服务器，不受分页/缓存限制 -->
-          <button class="btn-icon mark-all-read-btn" :class="{ confirming: markAllReadConfirm }" @click="markAllRead" :title="markAllReadConfirm ? '再次点击确认全部已读' : '全部已读'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
-            </svg>
-          </button>
-          <button class="btn-icon rebuild-btn" @click="rebuildSync" title="数据缓存不准确，可尝试清空缓存同步" :disabled="rebuilding">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-            </svg>
-          </button>
-          <span v-if="rebuilding" class="sync-badge">{{ syncProgress || '同步中' }}</span>
-          <span class="sync-status" :class="{ connected: wsConnected }" :title="wsConnected ? '实时同步已连接' : '实时同步未连接'">
-            <span class="status-dot"></span>
-          </span>
-        </div>
-      <!-- 移动端：筛选下拉菜单（右侧紧凑面板） -->
-      <transition name="filter-dropdown">
-        <div v-if="showMobileFilters" class="mobile-filter-dropdown">
-          <div class="filter-backdrop" @click="showMobileFilters = false"></div>
-          <div class="filter-dropdown-menu filter-dropdown-compact">
-            <button class="filter-dropdown-item" :class="{ active: readFilter === '' && !attachmentFilter }" @click="setReadFilter(''); showMobileFilters = false">全部 {{ filterCounts.all }}</button>
-            <button class="filter-dropdown-item" :class="{ active: readFilter === 'unread' }" @click="setReadFilter('unread'); showMobileFilters = false">未读 {{ filterCounts.unread }}</button>
-            <button class="filter-dropdown-item" :class="{ active: readFilter === 'read' }" @click="setReadFilter('read'); showMobileFilters = false">已读 {{ filterCounts.read }}</button>
-            <button class="filter-dropdown-item" :class="{ active: attachmentFilter }" @click="setAttachmentFilter(); showMobileFilters = false">附件 {{ filterCounts.attachments }}</button>
-          </div>
-        </div>
-      </transition>
-      </div>
+  <!-- 邮件列表视图 -->
+  <div v-if="!selectedMessage" class="mail-list">
+  <!-- 普通模式工具栏 -->
+  <div v-if="!selectMode" class="list-toolbar">
+  <div class="toolbar-left">
+  <!-- 多选图标按钮 -->
+  <button class="btn-icon" @click="enterSelectMode()" title="多选">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+  </svg>
+  </button>
+  <!-- 移动端：iOS风格文件夹选择器 -->
+  <button v-if="isMobile" class="folder-picker" @click="showFolderSheet = true">
+  <span class="picker-label">{{ mailStore.currentFolderName }}</span>
+  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6 9 12 15 18 9"/></svg>
+  </button>
+  <!-- 桌面端：文件夹名+数量 -->
+  <span v-else class="list-count">{{ mailStore.currentFolderName }} · {{ totalMessages }}封</span>
+  <!-- 筛选按钮 -->
+  <span class="toolbar-divider"></span>
+  <button class="filter-btn" :class="{ active: readFilter === '' && !attachmentFilter }" @click="setReadFilter('')">全部 {{ filterCounts.all }}</button>
+  <button class="filter-btn" :class="{ active: readFilter === 'unread' }" @click="setReadFilter('unread')">未读 {{ filterCounts.unread }}</button>
+  <button class="filter-btn" :class="{ active: readFilter === 'read' }" @click="setReadFilter('read')">已读 {{ filterCounts.read }}</button>
+  <button class="filter-btn" :class="{ active: attachmentFilter }" @click="setAttachmentFilter()">附件 {{ filterCounts.attachments }}</button>
+  </div>
+  <div class="toolbar-right">
+  <!-- 移动端：筛选展开/收起按钮 -->
+  <button class="btn-icon mobile-filter-toggle" :class="{ active: hasActiveFilter }" @click="showMobileFilters = !showMobileFilters">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+  </button>
+  <!-- 一键全部已读：直接操作 IMAP 服务器，不受分页/缓存限制 -->
+  <button class="btn-icon mark-all-read-btn" :class="{ confirming: markAllReadConfirm }" @click="markAllRead" :title="markAllReadConfirm ? '再次点击确认全部已读' : '全部已读'">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
+  </svg>
+  </button>
+  <button class="btn-icon rebuild-btn" @click="rebuildSync" title="数据缓存不准确，可尝试清空缓存同步" :disabled="rebuilding">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+  </svg>
+  </button>
+  <span v-if="rebuilding" class="sync-badge">{{ syncProgress || '同步中' }}</span>
+  <span class="sync-status" :class="{ connected: wsConnected }" :title="wsConnected ? '实时同步已连接' : '实时同步未连接'">
+  <span class="status-dot"></span>
+  </span>
+  </div>
+  <!-- 移动端：筛选下拉菜单（右侧紧凑面板） -->
+  <transition name="filter-dropdown">
+  <div v-if="showMobileFilters" class="mobile-filter-dropdown">
+  <div class="filter-backdrop" @click="showMobileFilters = false"></div>
+  <div class="filter-dropdown-menu filter-dropdown-compact">
+  <button class="filter-dropdown-item" :class="{ active: readFilter === '' && !attachmentFilter }" @click="setReadFilter(''); showMobileFilters = false">全部 {{ filterCounts.all }}</button>
+  <button class="filter-dropdown-item" :class="{ active: readFilter === 'unread' }" @click="setReadFilter('unread'); showMobileFilters = false">未读 {{ filterCounts.unread }}</button>
+  <button class="filter-dropdown-item" :class="{ active: readFilter === 'read' }" @click="setReadFilter('read'); showMobileFilters = false">已读 {{ filterCounts.read }}</button>
+  <button class="filter-dropdown-item" :class="{ active: attachmentFilter }" @click="setAttachmentFilter(); showMobileFilters = false">附件 {{ filterCounts.attachments }}</button>
+  </div>
+  </div>
+  </transition>
+  </div>
 
-      <!-- 多选模式工具栏（用 template v-else 包裹，保持与 v-if 相邻） -->
-      <template v-else>
-        <div class="select-toolbar">
-        <button class="select-btn" @click="exitSelectMode">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-        <span class="select-info">已选 {{ selectedIds.size }} 封</span>
-        <div class="select-actions">
-          <button class="select-btn" @click="toggleSelectAll" :title="isAllSelected ? '取消全选' : '全选'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
-            </svg>
-          </button>
-          <button class="select-btn mark-read" @click="batchMarkRead" :disabled="selectedIds.size === 0" title="标记已读">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
-            </svg>
-          </button>
-          <button class="select-btn delete" @click="batchDelete" :disabled="selectedIds.size === 0" title="删除选中">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-            </svg>
-          </button>
-        </div>
-        </div>
-      </template>
+  <!-- 多选模式工具栏（用 template v-else 包裹，保持与 v-if 相邻） -->
+  <template v-else>
+  <div class="select-toolbar">
+  <button class="select-btn" @click="exitSelectMode">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+  </button>
+  <span class="select-info">已选 {{ selectedIds.size }} 封</span>
+  <div class="select-actions">
+  <button class="select-btn" @click="toggleSelectAll" :title="isAllSelected ? '取消全选' : '全选'">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+  </svg>
+  </button>
+  <button class="select-btn mark-read" @click="batchMarkRead" :disabled="selectedIds.size === 0" title="标记已读">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
+  </svg>
+  </button>
+  <button class="select-btn delete" @click="batchDelete" :disabled="selectedIds.size === 0" title="删除选中">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+  </svg>
+  </button>
+  </div>
+  </div>
+  </template>
 
-      <!-- iOS风格底部弹出文件夹选择 -->
-      <transition name="sheet">
-        <div v-if="showFolderSheet" class="sheet-backdrop" @click.self="showFolderSheet = false">
-          <div class="sheet-content">
-            <div class="sheet-handle"></div>
-            <div class="sheet-title">文件夹</div>
-            <div class="sheet-list">
-              <button
-                v-for="folder in mailStore.folders"
-                :key="folder.path"
-                class="sheet-item"
-                :class="{ active: mailStore.currentFolder === folder.path }"
-                @click="mailStore.setFolder(folder.path); showFolderSheet = false"
-              >
-                <span class="sheet-folder-name">{{ mailStore.folderDisplayName(folder.name) }}</span>
-                <span class="sheet-folder-count" v-if="getFolderCount(folder)">{{ getFolderCount(folder) }}</span>
-                <svg v-if="mailStore.currentFolder === folder.path" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-              </button>
-            </div>
-          </div>
-        </div>
-      </transition>
+  <!-- iOS风格底部弹出文件夹选择 -->
+  <transition name="sheet">
+  <div v-if="showFolderSheet" class="sheet-backdrop" @click.self="showFolderSheet = false">
+  <div class="sheet-content">
+  <div class="sheet-handle"></div>
+  <div class="sheet-title">文件夹</div>
+  <div class="sheet-list">
+  <button
+  v-for="folder in mailStore.folders"
+  :key="folder.path"
+  class="sheet-item"
+  :class="{ active: mailStore.currentFolder === folder.path }"
+  @click="mailStore.setFolder(folder.path); showFolderSheet = false"
+  >
+  <span class="sheet-folder-name">{{ mailStore.folderDisplayName(folder.name) }}</span>
+  <span class="sheet-folder-count" v-if="getFolderCount(folder)">{{ getFolderCount(folder) }}</span>
+  <svg v-if="mailStore.currentFolder === folder.path" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+  </button>
+  </div>
+  </div>
+  </div>
+  </transition>
 
-      <!-- 加载中（首次加载无缓存数据时显示） -->
-      <div v-if="loading && messages.length === 0" class="list-loading">
-        <div class="spinner"></div>
-        <span>加载中...</span>
-      </div>
+  <!-- 加载中（首次加载无缓存数据时显示） -->
+  <div v-if="loading && messages.length === 0" class="list-loading">
+  <div class="spinner"></div>
+  <span>加载中...</span>
+  </div>
 
-      <!-- 空状态 -->
-      <div v-else-if="!loading && messages.length === 0" class="list-empty">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
-          <rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 4L12 13L2 4"/>
-        </svg>
-        <span>暂无邮件</span>
-      </div>
+  <!-- 空状态 -->
+  <div v-else-if="!loading && messages.length === 0" class="list-empty">
+  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
+  <rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 4L12 13L2 4"/>
+  </svg>
+  <span>暂无邮件</span>
+  </div>
 
-      <!-- 邮件列表 -->
-      <div v-else class="list-items">
-        <button
-          v-for="msg in messages"
-          :key="msg.id"
-          class="mail-item"
-          :class="{ unread: !msg.is_read, selected: selectMode && selectedIds.has(msg.id) }"
-          @click="selectMode ? toggleSelect(msg.id) : selectMessage(msg)"
-          @mouseenter="prefetchMessage(msg)"
-          @contextmenu.prevent="enterSelectMode(msg.id)"
-        >
-          <!-- 多选模式下的勾选框 -->
-          <div v-if="selectMode" class="check-circle" :class="{ checked: selectedIds.has(msg.id) }">
-            <svg v-if="selectedIds.has(msg.id)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-          </div>
-          <!-- 左列：头像 + 发件人 -->
-          <div class="mail-sender">
-            <div class="mail-avatar" :style="{ background: getAvatarColor(msg.from_addr) }">
-              {{ getInitial(msg.from_addr) }}
-            </div>
-            <span class="mail-from">{{ displayName(msg.from_addr) }}</span>
-          </div>
-          <!-- 中列：状态图标 + 主题 + 附件 + 日期 -->
-          <div class="mail-info">
-            <div class="mail-main-row">
-              <!-- 中列：已读/未读图标 + 主题 + 附件 -->
-              <svg v-if="!msg.is_read" class="mail-status-icon unread-icon" width="16" height="16" viewBox="0 0 24 24"><path fill="currentColor" d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
-              <svg v-else class="mail-status-icon read-icon" width="16" height="16" viewBox="0 0 1024 1024" fill="currentColor"><path d="M461.816 79.279c30.333-20.364 69.97-20.373 100.311-0.021l384.19 257.69c9.256 6.208 13.947 16.672 13.216 27.044 0.108 1.548 0.096 3.1-0.034 4.64 0.33 1.778 0.501 3.61 0.501 5.483v495.903C960 919.714 919.706 960 870 960H154c-49.706 0-90-40.286-90-89.982V374.115c0-2.663 0.347-5.245 0.999-7.704-0.004-0.803 0.025-1.608 0.086-2.412-0.804-10.432 3.883-20.985 13.191-27.234z m70.259 519.057c-11.417-10.283-28.76-10.278-40.171 0.012L157.358 900.01h709.674zM124 425.237v424.071L381.796 616.85 124 425.237z m776 0.224L642.268 616.842 900 848.964V425.461zM528.7 129.074a30.005 30.005 0 0 0-33.437 0.007L143.678 365.114l283.558 210.762 24.483-22.075c33.891-30.56 85.223-30.88 119.48-0.952l1.034 0.916 24.56 22.121 283.833-210.763z"/></svg>
-              <span class="mail-subject">{{ msg.subject || '(无主题)' }}</span>
-              <!-- 附件图标 -->
-              <svg v-if="msg.has_attachments" class="att-badge" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
-            </div>
-          </div>
-          <!-- 已读/未读标签 -->
-          <span class="mail-status-tag" :class="msg.is_read ? 'read' : 'unread'">
-            {{ msg.is_read ? '已读' : '未读' }}
-          </span>
-          <!-- 右列：日期（独立固定宽度列，保证最右侧对齐） -->
-          <span class="mail-date">{{ formatDate(msg.date) }}</span>
-        </button>
-      </div>
+  <!-- 邮件列表 -->
+  <div v-else class="list-items">
+  <button
+  v-for="msg in messages"
+  :key="msg.id"
+  class="mail-item"
+  :class="{ unread: !msg.is_read, selected: selectMode && selectedIds.has(msg.id) }"
+  @click="selectMode ? toggleSelect(msg.id) : selectMessage(msg)"
+  @mouseenter="prefetchMessage(msg)"
+  @contextmenu.prevent="enterSelectMode(msg.id)"
+  >
+  <!-- 多选模式下的勾选框 -->
+  <div v-if="selectMode" class="check-circle" :class="{ checked: selectedIds.has(msg.id) }">
+  <svg v-if="selectedIds.has(msg.id)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+  </div>
+  <!-- 左列：头像 + 发件人 -->
+  <div class="mail-sender">
+  <div class="mail-avatar" :style="{ background: getAvatarColor(msg.from_addr) }">
+  {{ getInitial(msg.from_addr) }}
+  </div>
+  <span class="mail-from">{{ displayName(msg.from_addr) }}</span>
+  </div>
+  <!-- 中列：状态图标 + 主题 + 附件 + 日期 -->
+  <div class="mail-info">
+  <div class="mail-main-row">
+  <!-- 中列：已读/未读图标 + 主题 + 附件 -->
+  <svg v-if="!msg.is_read" class="mail-status-icon unread-icon" width="16" height="16" viewBox="0 0 24 24"><path fill="currentColor" d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+  <svg v-else class="mail-status-icon read-icon" width="16" height="16" viewBox="0 0 1024 1024" fill="currentColor"><path d="M461.816 79.279c30.333-20.364 69.97-20.373 100.311-0.021l384.19 257.69c9.256 6.208 13.947 16.672 13.216 27.044 0.108 1.548 0.096 3.1-0.034 4.64 0.33 1.778 0.501 3.61 0.501 5.483v495.903C960 919.714 919.706 960 870 960H154c-49.706 0-90-40.286-90-89.982V374.115c0-2.663 0.347-5.245 0.999-7.704-0.004-0.803 0.025-1.608 0.086-2.412-0.804-10.432 3.883-20.985 13.191-27.234z m70.259 519.057c-11.417-10.283-28.76-10.278-40.171 0.012L157.358 900.01h709.674zM124 425.237v424.071L381.796 616.85 124 425.237z m776 0.224L642.268 616.842 900 848.964V425.461zM528.7 129.074a30.005 30.005 0 0 0-33.437 0.007L143.678 365.114l283.558 210.762 24.483-22.075c33.891-30.56 85.223-30.88 119.48-0.952l1.034 0.916 24.56 22.121 283.833-210.763z"/></svg>
+  <span class="mail-subject">{{ msg.subject || '(无主题)' }}</span>
+  <!-- 附件图标 -->
+  <svg v-if="msg.has_attachments" class="att-badge" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+  </div>
+  </div>
+  <!-- 已读/未读标签 -->
+  <span class="mail-status-tag" :class="msg.is_read ? 'read' : 'unread'">
+  {{ msg.is_read ? '已读' : '未读' }}
+  </span>
+  <!-- 右列：日期（独立固定宽度列，保证最右侧对齐） -->
+  <span class="mail-date">{{ formatDate(msg.date) }}</span>
+  </button>
+  </div>
 
-      <div v-if="!selectMode && totalPages > 1" class="pagination">
-        <button class="page-btn" :disabled="currentPage <= 1" @click="goPage(currentPage - 1)">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-        </button>
-        <template v-for="p in pageNumbers" :key="p">
-          <span v-if="p === '...'" class="page-ellipsis">...</span>
-          <button v-else class="page-btn" :class="{ active: p === currentPage }" @click="goPage(p as number)">{{ p }}</button>
-        </template>
-        <button class="page-btn" :disabled="currentPage >= totalPages" @click="goPage(currentPage + 1)">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-        </button>
-      </div>
-    </div>
+  <div v-if="!selectMode && totalPages > 1" class="pagination">
+  <button class="page-btn" :disabled="currentPage <= 1" @click="goPage(currentPage - 1)">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+  </button>
+  <template v-for="p in pageNumbers" :key="p">
+  <span v-if="p === '...'" class="page-ellipsis">...</span>
+  <button v-else class="page-btn" :class="{ active: p === currentPage }" @click="goPage(p as number)">{{ p }}</button>
+  </template>
+  <button class="page-btn" :disabled="currentPage >= totalPages" @click="goPage(currentPage + 1)">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+  </button>
+  </div>
+  </div>
 
-    <!-- 邮件详情视图（支持左滑返回） -->
-    <div v-else class="mail-detail"
-         @touchstart="onDetailTouchStart"
-         @touchmove="onDetailTouchMove"
-         @touchend="onDetailTouchEnd">
-      <div class="detail-toolbar">
-        <button class="btn-back" @click="backToList">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="15 18 9 12 15 6"/>
-          </svg>
-          <span>返回</span>
-        </button>
-        <div class="detail-actions">
-          <button class="btn-action" @click="replyMessage" title="回复邮件">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>
-            </svg>
-            <span>回复</span>
-          </button>
-          <button class="btn-action" @click="forwardMessage" title="转发邮件">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
-            </svg>
-            <span>转发</span>
-          </button>
-          <button class="btn-action" @click="printMail" :disabled="printing" title="打印">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>
-            </svg>
-            <span>{{ printing ? '打印中...' : '打印' }}</span>
-          </button>
-          <button class="btn-action" :class="{ confirm: deleteConfirm }" @click="onDeleteMessage" :title="deleteConfirm ? '再次点击确认删除' : '删除邮件'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-            </svg>
-            <span>{{ deleteConfirm ? '确认删除' : '删除' }}</span>
-          </button>
-        </div>
-      </div>
+  <!-- 邮件详情视图（支持左滑返回） -->
+  <div v-else class="mail-detail"
+  @touchstart="onDetailTouchStart"
+  @touchmove="onDetailTouchMove"
+  @touchend="onDetailTouchEnd">
+  <div class="detail-toolbar">
+  <button class="btn-back" @click="backToList">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="15 18 9 12 15 6"/>
+  </svg>
+  <span>返回</span>
+  </button>
+  <div class="detail-actions">
+  <button class="btn-action" @click="replyMessage" title="回复邮件">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>
+  </svg>
+  <span>回复</span>
+  </button>
+  <button class="btn-action" @click="forwardMessage" title="转发邮件">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+  </svg>
+  <span>转发</span>
+  </button>
+  <button class="btn-action" @click="printMail" :disabled="printing" title="打印">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>
+  </svg>
+  <span>{{ printing ? '打印中...' : '打印' }}</span>
+  </button>
+  <button class="btn-action" :class="{ confirm: deleteConfirm }" @click="onDeleteMessage" :title="deleteConfirm ? '再次点击确认删除' : '删除邮件'">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+  </svg>
+  <span>{{ deleteConfirm ? '确认删除' : '删除' }}</span>
+  </button>
+  </div>
+  </div>
 
-      <!-- 标题+正文+附件全部在一个滚动区域内 -->
-      <div class="detail-body">
-        <div class="detail-header">
-          <!-- 主题 -->
-          <h2 class="detail-subject">{{ selectedMessage.subject || '(无主题)' }}</h2>
+  <!-- 标题+正文+附件全部在一个滚动区域内 -->
+  <div class="detail-body">
+  <div class="detail-header">
+  <!-- 主题 -->
+  <h2 class="detail-subject">{{ selectedMessage.subject || '(无主题)' }}</h2>
 
-          <!-- 第一行：头像 + 发件人姓名/邮箱 + 加入联系人 -->
-          <div class="detail-sender-row">
-            <div class="meta-avatar" :style="{ background: getAvatarColor(selectedMessage.from_addr) }">
-              {{ getInitial(selectedMessage.from_addr) }}
-            </div>
-            <div class="meta-from">
-              <span class="from-name">{{ displayName(selectedMessage.from_addr) }}</span>
-              <span class="from-email" v-if="displayName(selectedMessage.from_addr) !== selectedMessage.from_addr">&lt;{{ selectedMessage.from_addr }}&gt;</span>
-              <button class="btn-add-contact" @click="addToContacts" title="加入联系人">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/>
-                </svg>
-              </button>
-            </div>
-          </div>
+  <!-- 第一行：头像 + 发件人姓名/邮箱 + 加入联系人 -->
+  <div class="detail-sender-row">
+  <div class="meta-avatar" :style="{ background: getAvatarColor(selectedMessage.from_addr) }">
+  {{ getInitial(selectedMessage.from_addr) }}
+  </div>
+  <div class="meta-from">
+  <span class="from-name">{{ displayName(selectedMessage.from_addr) }}</span>
+  <span class="from-email" v-if="displayName(selectedMessage.from_addr) !== selectedMessage.from_addr">&lt;{{ selectedMessage.from_addr }}&gt;</span>
+  <button class="btn-add-contact" @click="addToContacts" title="加入联系人">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/>
+  </svg>
+  </button>
+  </div>
+  </div>
 
-          <!-- 分割线 -->
-          <div class="detail-divider"></div>
+  <!-- 分割线 -->
+  <div class="detail-divider"></div>
 
-          <!-- 灰色信息卡：发件人 / 收件人 / 抄送 / 时间（全宽） -->
-          <div class="meta-card">
-            <div class="meta-row">
-              <span class="meta-row-label">发件人</span>
-              <span class="meta-row-value" :title="selectedMessage.from_addr">{{ formatAddressList(selectedMessage.from_addr) }}</span>
-            </div>
-            <div class="meta-row" v-if="selectedMessage.to_addr">
-              <span class="meta-row-label">收件人</span>
-              <span class="meta-row-value" :title="selectedMessage.to_addr">{{ formatAddressList(selectedMessage.to_addr) }}</span>
-            </div>
-            <div class="meta-row" v-if="selectedMessage.cc">
-              <span class="meta-row-label">抄送</span>
-              <span class="meta-row-value" :title="selectedMessage.cc">{{ formatAddressList(selectedMessage.cc) }}</span>
-            </div>
-            <div class="meta-row">
-              <span class="meta-row-label">时间</span>
-              <span class="meta-row-value">{{ formatDetailDate(selectedMessage.date) }}</span>
-            </div>
-          </div>
+  <!-- 灰色信息卡：发件人 / 收件人 / 抄送 / 时间（全宽） -->
+  <div class="meta-card">
+  <div class="meta-row">
+  <span class="meta-row-label">发件人</span>
+  <span class="meta-row-value" :title="selectedMessage.from_addr">{{ formatAddressList(selectedMessage.from_addr) }}</span>
+  </div>
+  <div class="meta-row" v-if="selectedMessage.to_addr">
+  <span class="meta-row-label">收件人</span>
+  <span class="meta-row-value" :title="selectedMessage.to_addr">{{ formatAddressList(selectedMessage.to_addr) }}</span>
+  </div>
+  <div class="meta-row" v-if="selectedMessage.cc">
+  <span class="meta-row-label">抄送</span>
+  <span class="meta-row-value" :title="selectedMessage.cc">{{ formatAddressList(selectedMessage.cc) }}</span>
+  </div>
+  <div class="meta-row">
+  <span class="meta-row-label">时间</span>
+  <span class="meta-row-value">{{ formatDetailDate(selectedMessage.date) }}</span>
+  </div>
+  </div>
 
-          <!-- 分割线（信息卡与正文之间） -->
-          <div class="detail-divider"></div>
-        </div>
+  <!-- 分割线（信息卡与正文之间） -->
+  <div class="detail-divider"></div>
+  </div>
 
-        <div v-if="selectedMessage.body_html || selectedMessage.body_text" v-html="sanitizeHtml(selectedMessage.body_html) || selectedMessage.body_text" class="detail-content" @click="handleMailLinkClick"></div>
-        <!-- 正文加载中：显示骨架屏 -->
-        <div v-else class="body-skeleton">
-          <div class="skeleton-line" style="width: 90%"></div>
-          <div class="skeleton-line" style="width: 100%"></div>
-          <div class="skeleton-line" style="width: 75%"></div>
-          <div class="skeleton-line" style="width: 95%"></div>
-          <div class="skeleton-line" style="width: 60%"></div>
-          <div class="skeleton-line" style="width: 85%"></div>
-          <div class="skeleton-line" style="width: 100%"></div>
-          <div class="skeleton-line" style="width: 40%"></div>
-        </div>
+  <div v-if="selectedMessage.body_html || selectedMessage.body_text" v-html="sanitizeHtml(selectedMessage.body_html) || selectedMessage.body_text" class="detail-content" @click="handleMailLinkClick"></div>
+  <!-- 正文加载中：显示骨架屏 -->
+  <div v-else class="body-skeleton">
+  <div class="skeleton-line" style="width: 90%"></div>
+  <div class="skeleton-line" style="width: 100%"></div>
+  <div class="skeleton-line" style="width: 75%"></div>
+  <div class="skeleton-line" style="width: 95%"></div>
+  <div class="skeleton-line" style="width: 60%"></div>
+  <div class="skeleton-line" style="width: 85%"></div>
+  <div class="skeleton-line" style="width: 100%"></div>
+  <div class="skeleton-line" style="width: 40%"></div>
+  </div>
 
-        <!-- 附件列表（放在正文后面，随正文一起滚动） -->
-        <div class="attachment-list" v-if="selectedMessage.attachments && selectedMessage.attachments.length > 0">
-          <div class="attachment-header">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
-            <span>附件 ({{ selectedMessage.attachments.length }})</span>
-          </div>
-          <div class="attachment-item" v-for="att in selectedMessage.attachments" :key="att.part_number" @click="downloadAttachment(att)">
-            <div class="att-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-            </div>
-            <div class="att-info">
-              <div class="att-name">{{ att.filename || '未命名附件' }}</div>
-              <div class="att-meta">{{ formatFileSize(att.size) }}</div>
-            </div>
-            <div class="att-download">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+  <!-- 附件列表（放在正文后面，随正文一起滚动） -->
+  <div class="attachment-list" v-if="selectedMessage.attachments && selectedMessage.attachments.length > 0">
+  <div class="attachment-header">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+  <span>附件 ({{ selectedMessage.attachments.length }})</span>
+  </div>
+  <div class="attachment-item" v-for="att in selectedMessage.attachments" :key="att.part_number" @click="downloadAttachment(att)">
+  <div class="att-icon">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+  </div>
+  <div class="att-info">
+  <div class="att-name">{{ att.filename || '未命名附件' }}</div>
+  <div class="att-meta">{{ formatFileSize(att.size) }}</div>
+  </div>
+  <div class="att-download">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+  </div>
+  </div>
+  </div>
+  </div>
+  </div>
   </div>
 </template>
 
@@ -397,7 +397,7 @@ const pageNumbers = computed(() => {
   const current = currentPage.value;
   // 总页数 <= 7 时全部显示
   if (total <= 7) {
-    return Array.from({ length: total }, (_, i) => i + 1);
+  return Array.from({ length: total }, (_, i) => i + 1);
   }
   // 总页数 > 7 时，显示：1 ... 当前附近 ... 末页
   const pages: (number | string)[] = [1];
@@ -430,7 +430,7 @@ function setReadFilter(filter: string) {
 function setAttachmentFilter() {
   attachmentFilter.value = !attachmentFilter.value;
   if (attachmentFilter.value) {
-    readFilter.value = '';
+  readFilter.value = '';
   }
   currentPage.value = 1;
   pageCache.clear();
@@ -458,18 +458,18 @@ async function batchDelete() {
   const count = selectedIds.value.size;
   uiStore.success(`正在删除 ${count} 封邮件...`);
   try {
-    await api.post('/messages/batch-delete', {
-      message_ids: [...selectedIds.value],
-      account_id: mailStore.currentAccountId,
-      folder: mailStore.currentFolder,
-    });
-    exitSelectMode();
-    pageCache.clear();
-    await loadMessages();
-    uiStore.success(`已删除 ${count} 封邮件`);
+  await api.post('/messages/batch-delete', {
+  message_ids: [...selectedIds.value],
+  account_id: mailStore.currentAccountId,
+  folder: mailStore.currentFolder,
+  });
+  exitSelectMode();
+  pageCache.clear();
+  await loadMessages();
+  uiStore.success(`已删除 ${count} 封邮件`);
   } catch (e) {
-    console.error('批量删除失败:', e);
-    uiStore.error('批量删除失败');
+  console.error('批量删除失败:', e);
+  uiStore.error('批量删除失败');
   }
 }
 
@@ -479,24 +479,24 @@ async function batchMarkRead() {
   const count = selectedIds.value.size;
   uiStore.success(`正在标记 ${count} 封邮件...`);
   try {
-    await api.post('/messages/batch-mark-read', {
-      message_ids: [...selectedIds.value],
-      account_id: mailStore.currentAccountId,
-      folder: mailStore.currentFolder,
-    });
-    // 更新本地邮件列表中已选邮件的已读状态
-    messages.value = messages.value.map(m =>
-      selectedIds.value.has(m.id) ? { ...m, is_read: true } : m
-    );
-    // 更新侧边栏未读数
-    for (let i = 0; i < count; i++) {
-      mailStore.decrementUnreadCount(mailStore.currentFolder);
-    }
-    exitSelectMode();
-    uiStore.success(`已标记 ${count} 封邮件为已读`);
+  await api.post('/messages/batch-mark-read', {
+  message_ids: [...selectedIds.value],
+  account_id: mailStore.currentAccountId,
+  folder: mailStore.currentFolder,
+  });
+  // 更新本地邮件列表中已选邮件的已读状态
+  messages.value = messages.value.map(m =>
+  selectedIds.value.has(m.id) ? { ...m, is_read: true } : m
+  );
+  // 更新侧边栏未读数
+  for (let i = 0; i < count; i++) {
+  mailStore.decrementUnreadCount(mailStore.currentFolder);
+  }
+  exitSelectMode();
+  uiStore.success(`已标记 ${count} 封邮件为已读`);
   } catch (e) {
-    console.error('批量标记已读失败:', e);
-    uiStore.error('标记已读失败');
+  console.error('批量标记已读失败:', e);
+  uiStore.error('标记已读失败');
   }
 }
 
@@ -507,37 +507,37 @@ async function batchMarkRead() {
 async function markAllRead() {
   // 两次点击确认机制：第一次点击提示确认，第二次点击执行
   if (!onMarkAllReadConfirm('mail-list')) {
-    uiStore.info('再次点击确认将当前文件夹所有邮件标记为已读');
-    return;
+  uiStore.info('再次点击确认将当前文件夹所有邮件标记为已读');
+  return;
   }
   clearMarkAllReadConfirm();
   const accountId = mailStore.currentAccountId;
   const folder = mailStore.currentFolder;
   if (!accountId) {
-    uiStore.error('请先选择邮箱账号');
-    return;
+  uiStore.error('请先选择邮箱账号');
+  return;
   }
   uiStore.info('正在标记全部已读...');
   try {
-    const res = await api.post('/messages/mark-all-read', {
-      account_ids: [accountId],
-      folder: folder,
-    });
-    const total = res.data?.total_marked ?? 0;
-    // 关键：清空前端分页缓存，避免旧缓存显示未读状态
-    pageCache.clear();
-    // 重新加载当前页列表（此时数据库已全部标记为已读）
-    await loadMessages();
-    // 刷新侧边栏未读数（folder_stats.unread_count 已置 0）
-    mailStore.loadFolderCounts();
-    if (total > 0) {
-      uiStore.success(`已标记 ${total} 封邮件为已读`);
-    } else {
-      uiStore.info('没有未读邮件');
-    }
+  const res = await api.post('/messages/mark-all-read', {
+  account_ids: [accountId],
+  folder: folder,
+  });
+  const total = res.data?.total_marked ?? 0;
+  // 关键：清空前端分页缓存，避免旧缓存显示未读状态
+  pageCache.clear();
+  // 重新加载当前页列表（此时数据库已全部标记为已读）
+  await loadMessages();
+  // 刷新侧边栏未读数（folder_stats.unread_count 已置 0）
+  mailStore.loadFolderCounts();
+  if (total > 0) {
+  uiStore.success(`已标记 ${total} 封邮件为已读`);
+  } else {
+  uiStore.info('没有未读邮件');
+  }
   } catch (e: any) {
-    console.error('全部已读失败:', e);
-    uiStore.error('全部已读失败：' + (e.response?.data?.detail || e.message || '网络错误'));
+  console.error('全部已读失败:', e);
+  uiStore.error('全部已读失败：' + (e.response?.data?.detail || e.message || '网络错误'));
   }
 }
 
@@ -550,70 +550,70 @@ const { wsConnected, connect: connectWs, disconnect: disconnectWs } = useWebSock
 /** 处理 WebSocket 业务消息 */
 function handleWsMessage(data: any) {
   if (data.type === 'new_mail') {
-    // 新邮件通知由 App.vue 的全局 WebSocket 处理；列表等待 cache_updated 再刷新。
-    return;
+  // 新邮件通知由 App.vue 的全局 WebSocket 处理；列表等待 cache_updated 再刷新。
+  return;
   } else if (data.type === 'cache_updated') {
-    // 缓存同步完成：刷新列表和计数（此时缓存已有新邮件数据）
-    if (!data.account_id || data.account_id === mailStore.currentAccountId) {
-      if (!data.folder || data.folder === mailStore.currentFolder) {
-        pageCache.clear();
-        loadMessages();
-      }
-      mailStore.loadFolderCounts();
-    }
+  // 缓存同步完成：刷新列表和计数（此时缓存已有新邮件数据）
+  if (!data.account_id || data.account_id === mailStore.currentAccountId) {
+  if (!data.folder || data.folder === mailStore.currentFolder) {
+  pageCache.clear();
+  loadMessages();
+  }
+  mailStore.loadFolderCounts();
+  }
   } else if (data.type === 'rebuild_done') {
-    // 重建同步完成：后端广播，前端静默刷新列表和计数，结束同步中状态
-    if (!data.account_id || data.account_id === mailStore.currentAccountId) {
-      pageCache.clear();
-      mailStore.loadFolderCounts();
-      loadMessages();
-      rebuilding.value = false;
-      syncing.value = false;
-      syncProgress.value = '';
-      if (data.error) {
-        uiStore.error('重建同步失败: ' + data.error);
-      }
-    }
+  // 重建同步完成：后端广播，前端静默刷新列表和计数，结束同步中状态
+  if (!data.account_id || data.account_id === mailStore.currentAccountId) {
+  pageCache.clear();
+  mailStore.loadFolderCounts();
+  loadMessages();
+  rebuilding.value = false;
+  syncing.value = false;
+  syncProgress.value = '';
+  if (data.error) {
+  uiStore.error('重建同步失败: ' + data.error);
+  }
+  }
   } else if (data.type === 'schedule_success' || data.type === 'schedule_failed') {
-    // 通知由 App.vue 统一处理；发送成功后的列表刷新等待 cache_updated。
-    return;
+  // 通知由 App.vue 统一处理；发送成功后的列表刷新等待 cache_updated。
+  return;
   } else if (data.type === 'connection_status') {
-    // 账号连接状态变化
-    if (data.account_id === mailStore.currentAccountId) {
-      if (data.status === 'connected') {
-        // 连接恢复，自动重试加载数据（替代 30 秒 setTimeout 轮询）
-        if (rebuilding.value) return; // 重建同步中不干扰
-        mailStore.reauthAccountIds.delete(data.account_id);
-        pageCache.clear();
-        loadMessages();
-        mailStore.loadFolderCounts();
-      }
-    }
-    // 任何账号的 reauth_needed 都记录（不限于当前账号）
-    if (data.status === 'reauth_needed' && data.account_id) {
-      mailStore.reauthAccountIds.add(data.account_id);
-    }
+  // 账号连接状态变化
+  if (data.account_id === mailStore.currentAccountId) {
+  if (data.status === 'connected') {
+  // 连接恢复，自动重试加载数据（替代 30 秒 setTimeout 轮询）
+  if (rebuilding.value) return; // 重建同步中不干扰
+  mailStore.reauthAccountIds.delete(data.account_id);
+  pageCache.clear();
+  loadMessages();
+  mailStore.loadFolderCounts();
+  }
+  }
+  // 任何账号的 reauth_needed 都记录（不限于当前账号）
+  if (data.status === 'reauth_needed' && data.account_id) {
+  mailStore.reauthAccountIds.add(data.account_id);
+  }
   } else if (data.type === 'sync_progress') {
-    // 同步进度更新
-    if (data.account_id === mailStore.currentAccountId && rebuilding.value) {
-      syncProgress.value = `同步中 (${data.completed}/${data.total})`;
-    }
+  // 同步进度更新
+  if (data.account_id === mailStore.currentAccountId && rebuilding.value) {
+  syncProgress.value = `同步中 (${data.completed}/${data.total})`;
+  }
   } else if (data.type === 'message_state_changed') {
-    // 跨标签页邮件状态同步
-    if (data.account_id === mailStore.currentAccountId) {
-      if (data.action === 'mark_read' || data.action === 'mark_unread') {
-        const isRead = data.action === 'mark_read';
-        for (const uid of data.uids) {
-          const msg = messages.value.find(m => String(m.id) === String(uid));
-          if (msg) msg.is_read = isRead;
-        }
-        mailStore.loadFolderCounts();
-      } else if (data.action === 'delete' || data.action === 'move') {
-        messages.value = messages.value.filter(m => !data.uids.includes(String(m.id)));
-        totalMessages.value = Math.max(0, totalMessages.value - data.uids.length);
-        mailStore.loadFolderCounts();
-      }
-    }
+  // 跨标签页邮件状态同步
+  if (data.account_id === mailStore.currentAccountId) {
+  if (data.action === 'mark_read' || data.action === 'mark_unread') {
+  const isRead = data.action === 'mark_read';
+  for (const uid of data.uids) {
+  const msg = messages.value.find(m => String(m.id) === String(uid));
+  if (msg) msg.is_read = isRead;
+  }
+  mailStore.loadFolderCounts();
+  } else if (data.action === 'delete' || data.action === 'move') {
+  messages.value = messages.value.filter(m => !data.uids.includes(String(m.id)));
+  totalMessages.value = Math.max(0, totalMessages.value - data.uids.length);
+  mailStore.loadFolderCounts();
+  }
+  }
   }
 }
 
@@ -630,9 +630,9 @@ function applyCachedPage(cache: MessagePageCache) {
 /** 将当前页数据保存到内存缓存 */
 function saveCurrentPageCache(data: any) {
   pageCache.set(getPageCacheKey(), {
-    messages: data.messages || [],
-    total: data.total || 0,
-    unreadTotal: data.unread_total || 0,
+  messages: data.messages || [],
+  total: data.total || 0,
+  unreadTotal: data.unread_total || 0,
   });
 }
 
@@ -641,13 +641,13 @@ function saveCurrentPageCache(data: any) {
 watch(
   () => [mailStore.currentFolder, mailStore.currentAccountId],
   () => {
-    messages.value = [];
-    selectedMessage.value = null;
-    currentPage.value = 1;
-    readFilter.value = '';
-    attachmentFilter.value = false;
-    pageCache.clear();
-    loadMessages();
+  messages.value = [];
+  selectedMessage.value = null;
+  currentPage.value = 1;
+  readFilter.value = '';
+  attachmentFilter.value = false;
+  pageCache.clear();
+  loadMessages();
   }
 );
 
@@ -674,32 +674,32 @@ async function switchAccount(id: string) {
 /** 拖拽排序结束后保存新顺序 */
 async function onAccountDragEnd() {
   const orders = mailStore.accounts.map((acc: any, index: number) => ({
-    id: acc.id,
-    sort_order: index,
+  id: acc.id,
+  sort_order: index,
   }));
   try {
-    await mailStore.saveSortOrder(orders);
+  await mailStore.saveSortOrder(orders);
   } catch (e) {
-    console.error('保存排序失败:', e);
+  console.error('保存排序失败:', e);
   }
 }
 
 /** 重新授权指定账号（复用添加账号的 OAuth 流程） */
 async function reauthorize(accountId?: string) {
   try {
-    const targetId = accountId || mailStore.currentAccountId;
-    const targetAccount = mailStore.accounts.find((a: any) => a.id === targetId);
-    if (!targetAccount) return;
-    const provider = targetAccount.provider;
-    // Gmail / Microsoft 都走 Cloudflare Broker，前端不再传本地 redirect_uri。
-    // 标记这是重新授权，OAuth 回调后不跳转到账号页
-    sessionStorage.setItem('flymail_oauth_reauth', '1');
-    const data = await api.post('/accounts/auth-url', { provider }) as any;
-    if (data.error) { uiStore.error('获取授权链接失败：' + data.error); return; }
-    if (data.auth_url) { window.open(data.auth_url, '_blank'); }
-    else { uiStore.error('获取授权链接失败'); }
+  const targetId = accountId || mailStore.currentAccountId;
+  const targetAccount = mailStore.accounts.find((a: any) => a.id === targetId);
+  if (!targetAccount) return;
+  const provider = targetAccount.provider;
+  // Gmail / Microsoft 都走 Cloudflare Broker，前端不再传本地 redirect_uri。
+  // 标记这是重新授权，OAuth 回调后不跳转到账号页
+  sessionStorage.setItem('flymail_oauth_reauth', '1');
+  const data = await api.post('/accounts/auth-url', { provider }) as any;
+  if (data.error) { uiStore.error('获取授权链接失败：' + data.error); return; }
+  if (data.auth_url) { window.open(data.auth_url, '_blank'); }
+  else { uiStore.error('获取授权链接失败'); }
   } catch (e: any) {
-    uiStore.error('重新授权失败：' + (e.response?.data?.error || e.message || '网络错误'));
+  uiStore.error('重新授权失败：' + (e.response?.data?.error || e.message || '网络错误'));
   }
 }
 
@@ -715,17 +715,17 @@ async function onDeleteMessage() {
   if (!onDeleteConfirm(selectedMessage.value.id)) return;
 
   try {
-    const params: Record<string, string> = { folder: mailStore.currentFolder };
-    if (mailStore.currentAccountId) params.account_id = mailStore.currentAccountId;
-    await api.delete(`/messages/${selectedMessage.value!.id}`, { params });
-    selectedMessage.value = null;
-    // 清除所有页缓存，避免翻页时显示旧的缓存数据
-    pageCache.clear();
-    // 删除后重新加载当前页，让后端返回正确的分页数据（自动补充新邮件）
-    await loadMessages();
+  const params: Record<string, string> = { folder: mailStore.currentFolder };
+  if (mailStore.currentAccountId) params.account_id = mailStore.currentAccountId;
+  await api.delete(`/messages/${selectedMessage.value!.id}`, { params });
+  selectedMessage.value = null;
+  // 清除所有页缓存，避免翻页时显示旧的缓存数据
+  pageCache.clear();
+  // 删除后重新加载当前页，让后端返回正确的分页数据（自动补充新邮件）
+  await loadMessages();
   } catch (e) {
-    console.error('删除邮件失败:', e);
-    uiStore.error('删除邮件失败');
+  console.error('删除邮件失败:', e);
+  uiStore.error('删除邮件失败');
   }
 }
 
@@ -733,7 +733,7 @@ async function onDeleteMessage() {
 async function loadMessages() {
   const cachedPage = pageCache.get(getPageCacheKey());
   if (cachedPage) {
-    applyCachedPage(cachedPage);
+  applyCachedPage(cachedPage);
   }
 
   // 有当前页缓存时直接显示缓存并后台刷新；没有任何内容时才显示加载中。
@@ -742,48 +742,48 @@ async function loadMessages() {
   syncing.value = showLoading;
   const version = ++loadVersion;
   try {
-    const params: Record<string, string | number> = {
-      folder: mailStore.currentFolder,
-      page: currentPage.value,
-      page_size: pageSize,
-    };
-    if (mailStore.currentAccountId) params.account_id = mailStore.currentAccountId;
-    if (readFilter.value) params.read_filter = readFilter.value;
-    if (attachmentFilter.value) params.attachment_filter = 'true';
-    const data = await api.get('/messages', { params }) as any;
-    // 只接受最新版本的结果，丢弃旧请求的响应
-    if (version !== loadVersion) return;
-    // Outlook 连接异常时，后端返回 reconnecting: true，前端展示友好提示
-    if (data.reconnecting) {
-      uiStore.error('邮箱连接异常，正在重新连接，请稍后再试');
-      return;
-    }
-    saveCurrentPageCache(data);
-    messages.value = data.messages || [];
-    totalMessages.value = data.total || 0;
-    // 更新筛选计数
-    if (data.filter_counts) {
-      filterCounts.value = data.filter_counts;
-    }
-    // 用 list_messages API 返回的数据更新侧边栏文件夹计数
-    // 收件箱显示未读数，其他文件夹显示邮件总数
-    mailStore.updateFolderCounts(
-      mailStore.currentFolder,
-      data.total || 0,
-      data.unread_total || 0,
-    );
+  const params: Record<string, string | number> = {
+  folder: mailStore.currentFolder,
+  page: currentPage.value,
+  page_size: pageSize,
+  };
+  if (mailStore.currentAccountId) params.account_id = mailStore.currentAccountId;
+  if (readFilter.value) params.read_filter = readFilter.value;
+  if (attachmentFilter.value) params.attachment_filter = 'true';
+  const data = await api.get('/messages', { params }) as any;
+  // 只接受最新版本的结果，丢弃旧请求的响应
+  if (version !== loadVersion) return;
+  // Outlook 连接异常时，后端返回 reconnecting: true，前端展示友好提示
+  if (data.reconnecting) {
+  uiStore.error('邮箱连接异常，正在重新连接，请稍后再试');
+  return;
+  }
+  saveCurrentPageCache(data);
+  messages.value = data.messages || [];
+  totalMessages.value = data.total || 0;
+  // 更新筛选计数
+  if (data.filter_counts) {
+  filterCounts.value = data.filter_counts;
+  }
+  // 用 list_messages API 返回的数据更新侧边栏文件夹计数
+  // 收件箱显示未读数，其他文件夹显示邮件总数
+  mailStore.updateFolderCounts(
+  mailStore.currentFolder,
+  data.total || 0,
+  data.unread_total || 0,
+  );
   } catch (e) {
-    if (version !== loadVersion) return;
-    console.error('加载邮件失败:', e);
-    uiStore.error('加载邮件失败');
+  if (version !== loadVersion) return;
+  console.error('加载邮件失败:', e);
+  uiStore.error('加载邮件失败');
   } finally {
-    if (version === loadVersion) {
-      loading.value = false;
-      // 重建同步期间不重置 syncing（由 rebuild_done WebSocket 消息控制）
-      if (!rebuilding.value) syncing.value = false;
-      // 列表加载完成后，后台批量预取当前页邮件正文
-      nextTick(() => { prefetchVisibleMessages(); });
-    }
+  if (version === loadVersion) {
+  loading.value = false;
+  // 重建同步期间不重置 syncing（由 rebuild_done WebSocket 消息控制）
+  if (!rebuilding.value) syncing.value = false;
+  // 列表加载完成后，后台批量预取当前页邮件正文
+  nextTick(() => { prefetchVisibleMessages(); });
+  }
   }
 }
 
@@ -796,10 +796,10 @@ async function rebuildSync() {
 
   // 使用项目统一的确认弹窗
   const ok = await uiStore.showConfirm({
-    title: '清空缓存同步',
-    message: '数据缓存不准确，可尝试清空缓存同步。将清空当前账号的本地缓存并重新从邮箱拉取所有邮件。',
-    confirmText: '清空并同步',
-    danger: true,
+  title: '清空缓存同步',
+  message: '数据缓存不准确，可尝试清空缓存同步。将清空当前账号的本地缓存并重新从邮箱拉取所有邮件。',
+  confirmText: '清空并同步',
+  danger: true,
   });
   if (!ok) return;
 
@@ -807,16 +807,16 @@ async function rebuildSync() {
   syncing.value = true;
   syncProgress.value = '同步中';
   try {
-    await api.post(`/accounts/${accountId}/rebuild-sync`);
-    // 后端立即返回，同步在后台执行。清空前端缓存并刷新文件夹
-    pageCache.clear();
-    await mailStore.loadFolders();
-    // 保持 syncing 状态（按钮转圈），等待后端 WebSocket 推送 rebuild_done 后自动结束
+  await api.post(`/accounts/${accountId}/rebuild-sync`);
+  // 后端立即返回，同步在后台执行。清空前端缓存并刷新文件夹
+  pageCache.clear();
+  await mailStore.loadFolders();
+  // 保持 syncing 状态（按钮转圈），等待后端 WebSocket 推送 rebuild_done 后自动结束
   } catch (e: any) {
-    console.error('重建同步失败:', e);
-    uiStore.error('重建同步失败');
-    rebuilding.value = false;
-    syncing.value = false;
+  console.error('重建同步失败:', e);
+  uiStore.error('重建同步失败');
+  rebuilding.value = false;
+  syncing.value = false;
   }
   // 注意：成功时不重置 rebuilding/syncing，由 WebSocket rebuild_done 消息处理
 }
@@ -832,47 +832,47 @@ async function selectMessage(msg: Message) {
 
   // 乐观 UI：立即用摘要数据渲染头部，正文留空显示骨架屏
   selectedMessage.value = {
-    ...msg,
-    body_html: '',
-    body_text: '',
-    attachments: [],
+  ...msg,
+  body_html: '',
+  body_text: '',
+  attachments: [],
   };
 
   try {
-    const params: Record<string, string> = { folder: mailStore.currentFolder };
-    if (mailStore.currentAccountId) params.account_id = mailStore.currentAccountId;
-    const data = await api.get(`/messages/${msg.id}`, { params }) as any;
-    if (version !== loadVersion) return;
-    // 用完整数据替换（正文填充）
-    selectedMessage.value = data;
+  const params: Record<string, string> = { folder: mailStore.currentFolder };
+  if (mailStore.currentAccountId) params.account_id = mailStore.currentAccountId;
+  const data = await api.get(`/messages/${msg.id}`, { params }) as any;
+  if (version !== loadVersion) return;
+  // 用完整数据替换（正文填充）
+  selectedMessage.value = data;
 
-    // 未读邮件：调用 IMAP STORE +FLAGS \Seen 标记已读，同步到邮箱服务器
-    if (!msg.is_read) {
-      // 直接修改 messages 数组中对应项的 is_read，确保 Vue 响应式追踪
-      const idx = messages.value.findIndex((m: Message) => m.id === msg.id);
-      if (idx !== -1) {
-        messages.value[idx] = { ...messages.value[idx], is_read: true };
-      }
-      // 异步调用标记已读API，不阻塞界面
-      api.post('/mark-read', {
-        message_id: msg.id,
-        folder: mailStore.currentFolder,
-        account_id: mailStore.currentAccountId || '',
-      }).catch((e: any) => console.error('[FlyMail] 标记已读失败:', e));
+  // 未读邮件：调用 IMAP STORE +FLAGS \Seen 标记已读，同步到邮箱服务器
+  if (!msg.is_read) {
+  // 直接修改 messages 数组中对应项的 is_read，确保 Vue 响应式追踪
+  const idx = messages.value.findIndex((m: Message) => m.id === msg.id);
+  if (idx !== -1) {
+  messages.value[idx] = { ...messages.value[idx], is_read: true };
+  }
+  // 异步调用标记已读API，不阻塞界面
+  api.post('/mark-read', {
+  message_id: msg.id,
+  folder: mailStore.currentFolder,
+  account_id: mailStore.currentAccountId || '',
+  }).catch((e: any) => console.error('[FlyMail] 标记已读失败:', e));
 
-      // 更新侧边栏未读数（收件箱减1）
-      mailStore.decrementUnreadCount(mailStore.currentFolder);
-    }
+  // 更新侧边栏未读数（收件箱减1）
+  mailStore.decrementUnreadCount(mailStore.currentFolder);
+  }
   } catch (e: any) {
-    if (version !== loadVersion) return;
-    console.error('加载邮件详情失败:', e);
-    // Outlook 连接异常时，后端返回 503 + { reconnecting: true }
-    const respData = e?.response?.data;
-    if (respData?.reconnecting) {
-      uiStore.error('邮箱连接异常，正在重新连接，请稍后再试');
-    } else {
-      uiStore.error('加载邮件详情失败');
-    }
+  if (version !== loadVersion) return;
+  console.error('加载邮件详情失败:', e);
+  // Outlook 连接异常时，后端返回 503 + { reconnecting: true }
+  const respData = e?.response?.data;
+  if (respData?.reconnecting) {
+  uiStore.error('邮箱连接异常，正在重新连接，请稍后再试');
+  } else {
+  uiStore.error('加载邮件详情失败');
+  }
   }
 }
 
@@ -901,7 +901,7 @@ function onDetailTouchEnd(e: TouchEvent) {
   const dt = Date.now() - _touchStartTime;
   // 左滑条件：水平滑动 > 80px，垂直偏移 < 100px，时间 < 500ms
   if (dx > 80 && dy < 100 && dt < 500) {
-    backToList();
+  backToList();
   }
 }
 
@@ -916,19 +916,19 @@ async function addToContacts() {
   // 从 from_addr 提取邮箱地址（支持 "姓名 <邮箱>" 和纯邮箱格式）
   const emails = extractEmails(fromAddr);
   if (emails.length === 0) {
-    uiStore.error('无法识别发件人邮箱');
-    return;
+  uiStore.error('无法识别发件人邮箱');
+  return;
   }
   const email = emails[0];
   // 提取姓名：取尖括号前的部分，没有则用邮箱前缀
   const name = extractName(fromAddr);
   try {
-    await quickAddContact(name, email);
-    uiStore.success('已加入联系人');
-    // 刷新联系人映射表，让邮件列表立即显示联系人名称
-    reloadContactMap();
+  await quickAddContact(name, email);
+  uiStore.success('已加入联系人');
+  // 刷新联系人映射表，让邮件列表立即显示联系人名称
+  reloadContactMap();
   } catch (e: any) {
-    uiStore.error(e?.response?.data?.error || '添加失败');
+  uiStore.error(e?.response?.data?.error || '添加失败');
   }
 }
 
@@ -967,14 +967,14 @@ async function printMail() {
   if (!selectedMessage.value || printing.value) return;
   printing.value = true;
   try {
-    await exportMailToPDF(selectedMessage.value);
-    // 不显示成功提示：window.print() 无法区分用户是"确认打印"还是"取消"
-    // 只有 print() 抛异常时才说明真正出错
+  await exportMailToPDF(selectedMessage.value);
+  // 不显示成功提示：window.print() 无法区分用户是"确认打印"还是"取消"
+  // 只有 print() 抛异常时才说明真正出错
   } catch (e: any) {
-    console.error('打印失败:', e);
-    uiStore.error(e?.message || '打印失败');
+  console.error('打印失败:', e);
+  uiStore.error(e?.message || '打印失败');
   } finally {
-    printing.value = false;
+  printing.value = false;
   }
 }
 
@@ -993,9 +993,9 @@ function prefetchVisibleMessages() {
   const ids = messages.value.slice(0, 10).map((m: Message) => m.id);
   if (ids.length === 0) return;
   api.post('/prefetch-messages', {
-    message_ids: ids,
-    folder: mailStore.currentFolder,
-    account_id: mailStore.currentAccountId || '',
+  message_ids: ids,
+  folder: mailStore.currentFolder,
+  account_id: mailStore.currentAccountId || '',
   }).catch(() => {});
 }
 
@@ -1004,11 +1004,11 @@ function downloadAttachment(att: Attachment) {
   const msg = selectedMessage.value;
   if (!msg) return;
   downloadAttachmentFile({
-    messageId: msg.id,
-    accountId: msg.account_id || mailStore.currentAccountId || '',
-    folder: msg.folder || 'INBOX',
-    partNumber: att.part_number,
-    filename: att.filename || 'attachment',
+  messageId: msg.id,
+  accountId: msg.account_id || mailStore.currentAccountId || '',
+  folder: msg.folder || 'INBOX',
+  partNumber: att.part_number,
+  filename: att.filename || 'attachment',
   });
 }
 </script>
@@ -1715,7 +1715,7 @@ function downloadAttachment(att: Attachment) {
 @media (max-width: 768px) {
   .btn-back span,
   .btn-action span {
-    display: none;
+  display: none;
   }
 }
 
@@ -1955,55 +1955,55 @@ function downloadAttachment(att: Attachment) {
 
   /* 移动端筛选下拉菜单：相对工具栏定位 */
   .mobile-filter-dropdown {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    z-index: 100;
-    pointer-events: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  pointer-events: none;
   }
   .filter-backdrop {
-    position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    pointer-events: auto;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: auto;
   }
   .filter-dropdown-menu {
-    position: relative;
-    pointer-events: auto;
-    background: var(--bg-primary);
-    border-bottom: 1px solid var(--border-color);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    max-height: 60vh;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
+  position: relative;
+  pointer-events: auto;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  max-height: 60vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   }
   /* 紧凑下拉面板：右侧对齐，固定宽度，圆角卡片（用于邮件列表，只有4个选项） */
   .filter-dropdown-compact {
-    position: absolute;
-    right: 12px;
-    top: 8px;
-    min-width: 140px;
-    max-height: none;
-    border: 1px solid var(--border-color);
-    border-radius: 10px;
-    box-shadow: 0 6px 20px rgba(0,0,0,0.15);
-    padding: 4px 0;
-    overflow-y: auto;
-    max-height: 50vh;
+  position: absolute;
+  right: 12px;
+  top: 8px;
+  min-width: 140px;
+  max-height: none;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+  padding: 4px 0;
+  overflow-y: auto;
+  max-height: 50vh;
   }
   .filter-dropdown-item {
-    display: block;
-    width: 100%;
-    padding: 10px 16px;
-    font-size: 14px;
-    text-align: left;
-    background: none;
-    border: none;
-    color: var(--text-primary);
-    cursor: pointer;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  display: block;
+  width: 100%;
+  padding: 10px 16px;
+  font-size: 14px;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   }
   .filter-dropdown-item:active { background: var(--bg-secondary); }
   .filter-dropdown-item.active { color: var(--accent-blue); font-weight: 600; }
@@ -2015,133 +2015,133 @@ function downloadAttachment(att: Attachment) {
   @keyframes dropOut { from { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(-4px) scale(0.96); } }
 
   .account-tabs {
-    padding: var(--space-2) var(--space-3);
-    overflow-x: auto;
+  padding: var(--space-2) var(--space-3);
+  overflow-x: auto;
   }
 
   /* iOS风格文件夹选择按钮 */
   .folder-picker {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 5px 12px;
-    border: none;
-    border-radius: var(--radius-md);
-    background: rgba(0, 122, 255, 0.1);
-    color: var(--accent-blue);
-    font-size: var(--text-sm);
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: rgba(0, 122, 255, 0.1);
+  color: var(--accent-blue);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
   }
   .folder-picker:active {
-    background: rgba(0, 122, 255, 0.2);
+  background: rgba(0, 122, 255, 0.2);
   }
   .picker-label {
-    max-width: 120px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   }
 
   /* iOS风格底部弹出层 */
   .sheet-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.3);
-    z-index: 1000;
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
   }
   .sheet-content {
-    width: 100%;
-    max-width: 420px;
-    max-height: 60vh;
-    background: #fff;
-    border-radius: 14px 14px 0 0;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
+  width: 100%;
+  max-width: 420px;
+  max-height: 60vh;
+  background: #fff;
+  border-radius: 14px 14px 0 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   }
   .sheet-handle {
-    width: 36px;
-    height: 5px;
-    border-radius: 3px;
-    background: #d1d1d6;
-    margin: 8px auto 4px;
+  width: 36px;
+  height: 5px;
+  border-radius: 3px;
+  background: #d1d1d6;
+  margin: 8px auto 4px;
   }
   .sheet-title {
-    padding: 8px 20px 12px;
-    font-size: 13px;
-    font-weight: 600;
-    color: #8e8e93;
-    text-align: center;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+  padding: 8px 20px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #8e8e93;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
   }
   .sheet-list {
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: env(safe-area-inset-bottom, 20px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: env(safe-area-inset-bottom, 20px);
   }
   .sheet-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    padding: 13px 20px;
-    border: none;
-    background: #fff;
-    font-size: 17px;
-    color: #000;
-    text-align: left;
-    cursor: pointer;
-    transition: background 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 13px 20px;
+  border: none;
+  background: #fff;
+  font-size: 17px;
+  color: #000;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
   }
   .sheet-item:active {
-    background: #f2f2f7;
+  background: #f2f2f7;
   }
   .sheet-item.active {
-    color: var(--accent-blue);
-    font-weight: 500;
+  color: var(--accent-blue);
+  font-weight: 500;
   }
   .sheet-item + .sheet-item {
-    border-top: 0.5px solid #e5e5ea;
+  border-top: 0.5px solid #e5e5ea;
   }
   .sheet-folder-name {
-    flex: 1;
+  flex: 1;
   }
   .sheet-folder-count {
-    font-size: 15px;
-    color: #8e8e93;
-    margin-right: 8px;
+  font-size: 15px;
+  color: #8e8e93;
+  margin-right: 8px;
   }
 
   /* 弹出层动画 */
   .sheet-enter-active, .sheet-leave-active {
-    transition: all 0.3s ease;
+  transition: all 0.3s ease;
   }
   .sheet-enter-from, .sheet-leave-to {
-    opacity: 0;
+  opacity: 0;
   }
   .sheet-enter-from .sheet-content, .sheet-leave-to .sheet-content {
-    transform: translateY(100%);
+  transform: translateY(100%);
   }
   .sheet-enter-active .sheet-content, .sheet-leave-active .sheet-content {
-    transition: transform 0.3s ease;
+  transition: transform 0.3s ease;
   }
 
   .detail-header {
-    padding: var(--space-3) var(--space-4) var(--space-2);
+  padding: var(--space-3) var(--space-4) var(--space-2);
   }
 
   .detail-subject {
-    font-size: var(--text-lg);
+  font-size: var(--text-lg);
   }
 
   .detail-content {
-    padding: var(--space-3) var(--space-4);
+  padding: var(--space-3) var(--space-4);
   }
 }
 

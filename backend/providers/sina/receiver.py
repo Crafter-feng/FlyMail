@@ -321,7 +321,7 @@ class SinaReceiver(BaseIMAPReceiver):
         uid_set = b",".join(page_uids)
         status, msg_data = self._conn.uid(
             'FETCH', uid_set,
-            '(FLAGS BODY.PEEK[HEADER.FIELDS (SUBJECT FROM TO DATE)])'
+            self._LIST_FETCH_ITEMS,
         )
         if status != 'OK':
             return MessageList(messages=[], total=total, unread_total=unread_total, page=page, page_size=page_size)

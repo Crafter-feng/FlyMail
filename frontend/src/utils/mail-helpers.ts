@@ -22,16 +22,16 @@ export function extractEmails(addrStr: string): string[] {
 
 /** 地址项：名字 + 邮箱 */
 export interface AddressItem {
-  name: string   // 显示名（无名字时用邮箱前缀）
+  name: string  // 显示名（无名字时用邮箱前缀）
   email: string  // 纯邮箱地址（小写）
 }
 
 /**
  * 解析地址字符串为 {name, email} 数组
  * 支持格式：
- *   "张三" <a@qq.com>, "李四" <b@qq.com>
- *   张三 <a@qq.com>, b@qq.com
- *   a@qq.com, b@qq.com
+ *  "张三" <a@qq.com>, "李四" <b@qq.com>
+ *  张三 <a@qq.com>, b@qq.com
+ *  a@qq.com, b@qq.com
  *
  * 用于邮件详情页展示收件人/抄送人列表
  */
@@ -42,16 +42,16 @@ export function parseAddressList(addrStr: string): AddressItem[] {
   const regex = /(?:"?([^"<]*?)"?\s*<([^>]+)>)|([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g
   let match: RegExpExecArray | null
   while ((match = regex.exec(addrStr)) !== null) {
-    if (match[2]) {
-      // "Name" <email> 格式：优先用名字，无名字时用邮箱前缀
-      const name = match[1].trim().replace(/"/g, '')
-      const email = match[2].trim().toLowerCase()
-      result.push({ name: name || email.split('@')[0], email })
-    } else if (match[3]) {
-      // 纯 email 格式：名字用邮箱前缀
-      const email = match[3].toLowerCase()
-      result.push({ name: email.split('@')[0], email })
-    }
+  if (match[2]) {
+  // "Name" <email> 格式：优先用名字，无名字时用邮箱前缀
+  const name = match[1].trim().replace(/"/g, '')
+  const email = match[2].trim().toLowerCase()
+  result.push({ name: name || email.split('@')[0], email })
+  } else if (match[3]) {
+  // 纯 email 格式：名字用邮箱前缀
+  const email = match[3].toLowerCase()
+  result.push({ name: email.split('@')[0], email })
+  }
   }
   return result
 }
@@ -67,7 +67,7 @@ const AVATAR_COLORS = ['#007AFF', '#34C759', '#FF9500', '#FF3B30', '#AF52DE', '#
 export function getAvatarColor(addr: string): string {
   let hash = 0
   for (let i = 0; i < (addr || '').length; i++) {
-    hash = addr.charCodeAt(i) + ((hash << 5) - hash)
+  hash = addr.charCodeAt(i) + ((hash << 5) - hash)
   }
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
 }
@@ -76,15 +76,15 @@ export function getAvatarColor(addr: string): string {
 export function formatDate(dateStr: string): string {
   if (!dateStr) return ''
   try {
-    const d = new Date(dateStr)
-    const now = new Date()
-    const isToday = d.toDateString() === now.toDateString()
-    if (isToday) return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-    const isThisYear = d.getFullYear() === now.getFullYear()
-    if (isThisYear) return `${d.getMonth() + 1}月${d.getDate()}日`
-    return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`
+  const d = new Date(dateStr)
+  const now = new Date()
+  const isToday = d.toDateString() === now.toDateString()
+  if (isToday) return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  const isThisYear = d.getFullYear() === now.getFullYear()
+  if (isThisYear) return `${d.getMonth() + 1}月${d.getDate()}日`
+  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`
   } catch {
-    return dateStr
+  return dateStr
   }
 }
 
@@ -92,17 +92,17 @@ export function formatDate(dateStr: string): string {
 export function formatDetailDate(dateStr: string): string {
   if (!dateStr) return ''
   try {
-    const d = new Date(dateStr)
-    const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
-    const year = d.getFullYear()
-    const month = String(d.getMonth() + 1).padStart(2, '0')
-    const day = String(d.getDate()).padStart(2, '0')
-    const weekday = weekdays[d.getDay()]
-    const hour = String(d.getHours()).padStart(2, '0')
-    const minute = String(d.getMinutes()).padStart(2, '0')
-    return `${year}年${month}月${day}日 (${weekday}) ${hour}:${minute}`
+  const d = new Date(dateStr)
+  const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  const weekday = weekdays[d.getDay()]
+  const hour = String(d.getHours()).padStart(2, '0')
+  const minute = String(d.getMinutes()).padStart(2, '0')
+  return `${year}年${month}月${day}日 (${weekday}) ${hour}:${minute}`
   } catch {
-    return dateStr
+  return dateStr
   }
 }
 
@@ -118,12 +118,12 @@ export function formatAddressList(addrStr: string): string {
   const list = parseAddressList(addrStr)
   if (list.length === 0) return ''
   return list.map((a) => {
-    // 如果 name 就是邮箱前缀且与 email 前缀一致，直接显示完整邮箱
-    // 否则显示"姓名 <邮箱>"
-    if (a.name === a.email.split('@')[0]) {
-      return a.email
-    }
-    return `${a.name} <${a.email}>`
+  // 如果 name 就是邮箱前缀且与 email 前缀一致，直接显示完整邮箱
+  // 否则显示"姓名 <邮箱>"
+  if (a.name === a.email.split('@')[0]) {
+  return a.email
+  }
+  return `${a.name} <${a.email}>`
   }).join('；')
 }
 

@@ -1,7 +1,7 @@
 """设置管理路由
 
 OAuth 授权已迁移到 Cloudflare Broker，本地不再保存客户端密钥。
-本模块只保存 Gmail 网络代理和用户级聚合收件箱设置。
+Gmail 网络代理按 user_uid 存 user_settings，连接时经 Credentials.extra 注入。
 """
 import asyncio
 import time
@@ -9,7 +9,11 @@ from urllib.parse import urlparse
 
 from fastapi import APIRouter, Request
 
-from services.settings import async_load_settings, async_save_settings
+from services.settings import (
+    get_gmail_proxy_settings,
+    save_gmail_proxy_settings,
+)
+from deps import get_uid
 from schemas import (
     SettingsResponse,
     SettingsUpdateRequest,
@@ -25,21 +29,18 @@ router = APIRouter(tags=["设置"])
 # ==================== 辅助函数 ====================
 
 
-def sync_gmail_config(settings: dict):
-    """将 Gmail 网络代理设置同步到运行时配置。"""
-    from providers.gmail import config as gmail_config
+async def reset_gmail_idle_connections(user_uid: str = ""):
+    """代理设置变更后断开本用户 Gmail IDLE 连接，让后台监听按新配置重建。
 
-    gmail_config.GMAIL_PROXY_ENABLED = bool(settings.get("gmail_proxy_enabled", False))
-    gmail_config.GMAIL_PROXY_URL = settings.get("gmail_proxy_url", "") or ""
-
-
-async def reset_gmail_idle_connections():
-    """代理设置变更后断开 Gmail IDLE 连接，让后台监听按新配置重建。"""
+    只重置指定 user_uid 的账号；user_uid 为空时不操作（避免误断全站）。
+    """
+    if not user_uid:
+        return
     try:
         from db import get_accounts
         from services.idle_manager import idle_manager
 
-        accounts = await get_accounts("")
+        accounts = await get_accounts(user_uid)
         for account in accounts:
             if account.provider == "gmail":
                 await idle_manager.remove(account.id)
@@ -129,9 +130,10 @@ def _test_proxy_to_google_sync(proxy_url: str) -> dict:
 
 
 @router.get("/api/settings", response_model=SettingsResponse, summary="获取 Gmail 网络代理设置")
-async def get_settings():
-    """获取本地 Gmail 代理设置。OAuth Client 密钥由 Cloudflare Broker 管理。"""
-    settings = await async_load_settings()
+async def get_settings(request: Request):
+    """获取当前用户的 Gmail 代理设置（按 user_uid 隔离）。"""
+    uid = await get_uid(request)
+    settings = await get_gmail_proxy_settings(uid)
     return {
         "gmail_proxy_enabled": bool(settings.get("gmail_proxy_enabled", False)),
         "gmail_proxy_url": settings.get("gmail_proxy_url", ""),
@@ -139,12 +141,13 @@ async def get_settings():
 
 
 @router.put("/api/settings", response_model=SettingsUpdateResponse, summary="更新 Gmail 网络代理设置")
-async def update_settings(body: SettingsUpdateRequest):
-    """更新 Gmail 网络代理设置，不保存任何 OAuth Client 密钥。"""
+async def update_settings(request: Request, body: SettingsUpdateRequest):
+    """更新当前用户 Gmail 代理；不写进程全局 gmail_config，不保存 OAuth 密钥。"""
+    uid = await get_uid(request)
     update_data = body.model_dump(exclude_none=True)
-    saved = await async_save_settings(update_data)
-    sync_gmail_config(saved)
-    await reset_gmail_idle_connections()
+    await save_gmail_proxy_settings(uid, update_data)
+    # 仅重置本用户 Gmail IDLE，按新代理重连
+    await reset_gmail_idle_connections(uid)
 
     return {"success": True, "message": "设置已保存"}
 
@@ -170,17 +173,18 @@ async def test_gmail_proxy(body: ProxyTestRequest):
 async def get_unified_settings(request: Request):
     """获取聚合收件箱的设置：用户选择要聚合的邮箱账号列表
 
-    修复 D1：unified_account_ids 改为按 user_uid 存储在 user_settings 表，避免多用户互相覆盖
+    unified_account_ids 按 user_uid 存储在 user_settings 表，避免多用户互相覆盖
     """
     from db import get_accounts, get_user_settings
-    from deps import get_uid
 
     uid = await get_uid(request)
     accounts = await get_accounts(uid)
 
-    # 从用户级配置表读取（D1 修复）
+    # 从用户级配置表读取（按 user_uid 隔离）
     user_settings = await get_user_settings(uid, ["unified_account_ids"])
     unified_ids = user_settings.get("unified_account_ids", [])
+    if not isinstance(unified_ids, list):
+        unified_ids = []
 
     return {
         "account_ids": unified_ids,
@@ -200,15 +204,14 @@ async def get_unified_settings(request: Request):
 async def save_unified_settings(request: Request, body: UnifiedSettingsRequest):
     """保存聚合收件箱的账号ID列表
 
-    修复 D1：unified_account_ids 改为按 user_uid 存储在 user_settings 表，避免多用户互相覆盖
+    unified_account_ids 按 user_uid 存储在 user_settings 表，避免多用户互相覆盖
     """
     from db import set_user_settings
-    from deps import get_uid
 
     uid = await get_uid(request)
     account_ids = body.account_ids
 
-    # 写入用户级配置表（D1 修复）
+    # 写入用户级配置表
     await set_user_settings(uid, {"unified_account_ids": account_ids})
 
     return {"success": True}

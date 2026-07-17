@@ -1,7 +1,8 @@
 """FlyMail application settings.
 
-Only Gmail proxy settings are persisted locally. OAuth client credentials are
-managed by the Cloudflare OAuth Broker and must not be written to settings.json.
+Gmail 代理按 user_uid 存 user_settings（多用户隔离）。
+settings.json 仅作兼容回退（老版本全局配置），新写入不再依赖全局。
+OAuth client credentials 由 Cloudflare OAuth Broker 管理，不得写入本地。
 """
 import asyncio
 import json
@@ -19,6 +20,10 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "gmail_proxy_enabled": False,
     "gmail_proxy_url": "",
 }
+
+# user_settings 表中的代理键名
+_PROXY_ENABLED_KEY = "gmail_proxy_enabled"
+_PROXY_URL_KEY = "gmail_proxy_url"
 
 
 def _ensure_data_dir() -> None:
@@ -40,7 +45,10 @@ def _write_settings(settings: Dict[str, Any]) -> None:
 
 
 def load_settings() -> Dict[str, Any]:
-    """Load local settings and remove any legacy OAuth credential fields."""
+    """Load local settings and remove any legacy OAuth credential fields.
+
+    仅兼容旧全局 settings.json；多用户场景请用 get_gmail_proxy_settings(user_uid)。
+    """
     _ensure_data_dir()
     if not os.path.exists(SETTINGS_FILE):
         logger.debug("配置文件不存在，使用默认值: %s", SETTINGS_FILE)
@@ -71,7 +79,7 @@ def load_settings() -> Dict[str, Any]:
 
 
 def save_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
-    """Save non-sensitive local runtime settings."""
+    """Save non-sensitive local runtime settings（兼容旧全局文件，新代码优先 user_settings）。"""
     current = load_settings()
     allowed_update = {k: v for k, v in settings.items() if k in DEFAULT_SETTINGS}
     current.update(allowed_update)
@@ -97,3 +105,73 @@ async def async_load_settings() -> Dict[str, Any]:
 
 async def async_save_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
     return await asyncio.to_thread(save_settings, settings)
+
+
+# ==================== 按用户隔离的 Gmail 代理 ====================
+
+
+def apply_proxy_to_credentials_extra(
+    extra: Dict[str, Any] | None,
+    proxy_settings: Dict[str, Any] | None,
+) -> Dict[str, Any]:
+    """把用户级代理写入 Credentials.extra（不落库，仅运行时）。
+
+    extra 原有字段（如 email）保留；代理键覆盖写入。
+    """
+    out = dict(extra or {})
+    ps = _normalize_settings(proxy_settings)
+    out[_PROXY_ENABLED_KEY] = ps["gmail_proxy_enabled"]
+    out[_PROXY_URL_KEY] = ps["gmail_proxy_url"]
+    return out
+
+
+def resolve_gmail_proxy_url(extra: Dict[str, Any] | None) -> str:
+    """从 Credentials.extra 解析出实际可用的代理 URL；关闭或未配则空串。"""
+    if not extra:
+        return ""
+    if not bool(extra.get(_PROXY_ENABLED_KEY)):
+        return ""
+    return str(extra.get(_PROXY_URL_KEY) or "").strip()
+
+
+async def get_gmail_proxy_settings(user_uid: str) -> Dict[str, Any]:
+    """读取指定用户的 Gmail 代理；user_settings 无记录时回退 settings.json。"""
+    from db import get_user_settings
+
+    uid = (user_uid or "").strip()
+    if uid:
+        try:
+            raw = await get_user_settings(uid, [_PROXY_ENABLED_KEY, _PROXY_URL_KEY])
+            # 用户表有任一键即视为已配置（含显式关闭）
+            if _PROXY_ENABLED_KEY in raw or _PROXY_URL_KEY in raw:
+                return _normalize_settings({
+                    "gmail_proxy_enabled": raw.get(_PROXY_ENABLED_KEY, False),
+                    "gmail_proxy_url": raw.get(_PROXY_URL_KEY, ""),
+                })
+        except Exception as e:
+            logger.debug("读取 user_settings 代理失败，回退全局: %s", e)
+
+    # 兼容旧全局配置
+    return await async_load_settings()
+
+
+async def save_gmail_proxy_settings(user_uid: str, settings: Dict[str, Any]) -> Dict[str, Any]:
+    """按 user_uid 写入 Gmail 代理到 user_settings（不写进程全局 gmail_config）。"""
+    from db import set_user_settings
+
+    uid = (user_uid or "").strip()
+    if not uid:
+        raise ValueError("user_uid 不能为空")
+
+    normalized = _normalize_settings(settings)
+    await set_user_settings(uid, {
+        _PROXY_ENABLED_KEY: 1 if normalized["gmail_proxy_enabled"] else 0,
+        _PROXY_URL_KEY: normalized["gmail_proxy_url"],
+    })
+    logger.info(
+        "已保存用户 Gmail 代理: user_uid=%s, enabled=%s, url=%s",
+        uid,
+        normalized["gmail_proxy_enabled"],
+        "有" if normalized["gmail_proxy_url"] else "空",
+    )
+    return normalized

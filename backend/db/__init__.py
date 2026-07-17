@@ -26,9 +26,9 @@ async def get_db() -> aiosqlite.Connection:
     """获取全局单例数据库连接
 
     使用单例模式复用连接，WAL 模式只在首次连接时设置一次。
-    如果旧代码误关了连接，这里会自动重建，避免出现 no active connection。
+    连接若被误关，这里会自动重建，避免 no active connection。
 
-    修复 P3：用 asyncio.Lock 保护创建逻辑，防止并发 get_db() 创建多个连接导致旧连接泄漏。
+    用 asyncio.Lock 保护创建逻辑，防止并发 get_db() 创建多个连接导致旧连接泄漏。
     """
     global _db_instance
     # 快速路径：连接已存在直接返回（无锁，性能优先）
@@ -98,9 +98,9 @@ async def init_db():
     # 新增索引：按账号+文件夹+UID查询，用于增量同步时获取最大UID
     await db.execute("CREATE INDEX IF NOT EXISTS idx_messages_uid ON cached_messages(account_id, folder, uid)")
     await db.execute("CREATE INDEX IF NOT EXISTS idx_messages_unified ON cached_messages(user_uid, folder, account_id)")
-    # 修复 Q5：新增索引：按账号+文件夹+已读状态查询，用于未读计数和筛选
+    # 索引：按账号+文件夹+已读状态查询，用于未读计数和筛选
     await db.execute("CREATE INDEX IF NOT EXISTS idx_messages_read ON cached_messages(account_id, folder, is_read)")
-    # 修复 Q5：新增索引：accounts 表按 user_uid 查询（get_accounts 核心查询，几乎所有API都调用）
+    # 索引：accounts 表按 user_uid 查询（get_accounts 核心查询，几乎所有API都调用）
     await db.execute("CREATE INDEX IF NOT EXISTS idx_accounts_user ON accounts(user_uid)")
 
     # 通知表：持久化新邮件通知记录
@@ -145,7 +145,7 @@ async def init_db():
             )
         """)
 
-    # 修复 D1：用户级配置表，按 user_uid 隔离（unified_account_ids/signature_html/signature_enabled）
+    # 用户级配置表，按 user_uid 隔离（unified_account_ids/signature_html/signature_enabled）
     # 替代原来全局 settings.json 中混存的用户级配置，避免多用户互相覆盖
     await db.execute("""
             CREATE TABLE IF NOT EXISTS user_settings (
@@ -178,7 +178,7 @@ async def init_db():
     except Exception as e:
         logger.debug("迁移加列已存在，忽略 notifications.message: %s", e)
 
-    # 安全修复 S3：signatures 表添加 user_uid 字段，支持多用户隔离
+    # signatures 表添加 user_uid 字段，支持多用户隔离
     try:
         await db.execute("ALTER TABLE signatures ADD COLUMN user_uid TEXT DEFAULT ''")
     except Exception as e:
@@ -195,6 +195,12 @@ async def init_db():
         await db.execute("ALTER TABLE cached_messages ADD COLUMN cc TEXT DEFAULT ''")
     except Exception as e:
         logger.debug("迁移加列已存在，忽略 cached_messages.cc: %s", e)
+
+    # RFC Message-ID：回复 In-Reply-To 用，列表摘要 UPSERT 用 COALESCE 保留
+    try:
+        await db.execute("ALTER TABLE cached_messages ADD COLUMN message_id TEXT DEFAULT ''")
+    except Exception as e:
+        logger.debug("迁移加列已存在，忽略 cached_messages.message_id: %s", e)
 
     # 数据迁移：将 message_archive 表的 date 字段从 RFC 2822 格式转为 ISO 格式
     # RFC 2822（如 'Fri, 11 Jul 2026 02:17:55 +0000'）无法被 SQLite 字符串排序正确处理
@@ -306,8 +312,8 @@ async def get_accounts(user_uid: str) -> List[Account]:
 async def get_account_by_id(account_id: str) -> Account | None:
     """按主键直接查询单个账号。
 
-    O4 修复：token 刷新锁内 double-check 使用此函数，避免查询所有用户账号
-    （原 get_accounts("") 会加载所有用户的 email 和 credentials_json 到内存，
+    token 刷新锁内 double-check 使用此函数，避免查询所有用户账号
+    （get_accounts("") 会加载所有用户的 email 和 credentials_json 到内存，
     存在性能和隐私问题）。
     """
     db = await get_db()
@@ -478,7 +484,10 @@ async def upsert_cached_messages(messages: List[CachedMessage]) -> int:
              m.subject, m.from_addr, m.to_addr, m.cc or "", m.date,
              1 if m.is_read else 0, 1 if m.is_starred else 0,
              1 if m.has_attachments else 0,
-             m.body_text or None, m.body_html or None, m.cached_at)
+             m.body_text or None, m.body_html or None,
+             # RFC Message-ID：列表摘要常为空串，UPSERT 用 COALESCE 保留详情已写值
+             (m.message_id or "").strip() or None,
+             m.cached_at)
         )
         id_updates.append((cache_id, m.account_id, m.folder, m.uid, cache_id))
         id_cleanup.append((m.account_id, m.folder, m.uid, cache_id))
@@ -494,8 +503,9 @@ async def upsert_cached_messages(messages: List[CachedMessage]) -> int:
     await db.executemany(
         """INSERT INTO cached_messages
            (id, account_id, user_uid, uid, folder, subject, from_addr, to_addr, cc,
-            date, is_read, is_starred, has_attachments, body_text, body_html, cached_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            date, is_read, is_starred, has_attachments, body_text, body_html,
+            message_id, cached_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET
             subject = excluded.subject,
             from_addr = excluded.from_addr,
@@ -504,10 +514,13 @@ async def upsert_cached_messages(messages: List[CachedMessage]) -> int:
             date = excluded.date,
             is_read = excluded.is_read,
             is_starred = excluded.is_starred,
-            has_attachments = excluded.has_attachments,
+            -- 附件标记用 MAX：true(1) 不被列表摘要的 false(0) 覆盖
+            has_attachments = MAX(excluded.has_attachments, cached_messages.has_attachments),
             cached_at = excluded.cached_at,
             body_text = COALESCE(excluded.body_text, cached_messages.body_text),
-            body_html = COALESCE(excluded.body_html, cached_messages.body_html)""",
+            body_html = COALESCE(excluded.body_html, cached_messages.body_html),
+            -- 列表摘要 message_id 为空时保留详情已写入的 RFC Message-ID
+            message_id = COALESCE(NULLIF(excluded.message_id, ''), cached_messages.message_id)""",
         rows,
     )
     await db.executemany(
@@ -747,7 +760,7 @@ async def get_cached_message_detail(account_id: str, uid: int, folder: str) -> O
     db = await get_db()
     cursor = await db.execute(
         """SELECT id, uid, subject, from_addr, to_addr, date, is_read, is_starred,
-                  folder, body_text, body_html, has_attachments, cc
+                  folder, body_text, body_html, has_attachments, cc, message_id
            FROM cached_messages
            WHERE account_id = ? AND folder = ? AND uid = ?""",
         (account_id, folder, uid),
@@ -774,6 +787,9 @@ async def get_cached_message_detail(account_id: str, uid: int, folder: str) -> O
         "body_html": body_html,
         "has_attachments": bool(row[11]),
         "cc": row[12] or "",  # 抄送人（回复时填充抄送列表）
+        "message_id": row[13] or "",  # RFC Message-ID，回复线程用
+        # 聚合收件箱回复时需要知道所属账号，避免发件人回落到侧边栏当前账号
+        "account_id": account_id,
         "attachments": [],  # 缓存中不存附件列表，需要 IMAP 拉取时补充
     }
 
@@ -1019,11 +1035,11 @@ async def create_signature(sig: Signature) -> Signature:
     """创建签名模板
 
     若 is_default=1，先将该用户的其他模板 is_default 设为 0（确保只有一个默认签名）。
-    修复 D3：用显式事务包裹，确保清默认+插入的原子性。
+    用显式事务包裹，确保清默认+插入的原子性。
     """
     db = await get_db()
     now = time.time()
-    # 修复 D3：显式事务，防止清默认后插入失败导致所有默认签名丢失
+    # 显式事务，防止清默认后插入失败导致所有默认签名丢失
     await db.execute("BEGIN")
     try:
         if sig.is_default:
@@ -1049,11 +1065,11 @@ async def update_signature(sig: Signature) -> bool:
 
     若 is_default=1，先将该用户的其他模板 is_default 设为 0。
     返回是否更新成功。
-    修复 D3：用显式事务包裹，确保清默认+更新的原子性。
+    用显式事务包裹，确保清默认+更新的原子性。
     """
     db = await get_db()
     now = time.time()
-    # 修复 D3：显式事务，防止清默认后更新失败导致所有默认签名丢失
+    # 显式事务，防止清默认后更新失败导致所有默认签名丢失
     await db.execute("BEGIN")
     try:
         if sig.is_default:
@@ -1248,7 +1264,7 @@ async def get_unified_inbox_stats(user_uid: str, account_ids: list) -> dict:
     }
 
 
-# ==================== 用户级配置（D1 修复） ====================
+# ==================== 用户级配置 ====================
 
 
 async def get_user_setting(user_uid: str, key: str, default: Any = None) -> Any:
@@ -1523,7 +1539,7 @@ def _address_field_contains_email(field: str, email_norm: str) -> bool:
 async def get_contact_stats(user_uid: str, email: str) -> dict:
     """统计与某邮箱地址的往来邮件数量和最近联系时间。
 
-    S5 修复：废弃 LIKE %email% 子串匹配，改为「候选预筛 + RFC 精确解析」：
+    废弃 LIKE %email% 子串匹配，改为「候选预筛 + RFC 精确解析」：
     1. 先用转义后的 LIKE 缩小候选行（性能）
     2. 再用 getaddresses 做完整邮箱 token 精确匹配（正确性）
     """

@@ -210,7 +210,7 @@ class OutlookReceiver(BaseIMAPReceiver):
                 time.sleep(wait)
             try:
                 conn = OutlookIPv4IMAP4_SSL(OUTLOOK_IMAP_HOST, OUTLOOK_IMAP_PORT, ssl_context=_create_outlook_ssl_context(), timeout=30)
-                # 修复 P5: 认证失败时关闭连接，防止 socket 泄漏
+                # 认证失败时关闭连接，防止 socket 泄漏
                 try:
                     # imaplib.authenticate 会自动把返回值做 base64 编码，这里必须返回原始 XOAUTH2 字符串。
                     email = credentials.extra.get('email', '')
@@ -442,7 +442,7 @@ class OutlookReceiver(BaseIMAPReceiver):
             uid_set = ",".join(str(uid) for uid in batch)
             status, msg_data = self._conn.uid(
                 'FETCH', uid_set,
-                '(FLAGS BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE)])'
+                self._LIST_FETCH_ITEMS,
             )
             if status == "OK":
                 parsed = self._parse_batch_fetch_response(msg_data, folder)

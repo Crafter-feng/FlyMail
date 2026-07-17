@@ -1,390 +1,427 @@
 <template>
   <div class="compose-page" @dragover.prevent="isDragging = true" @dragleave.prevent="isDragging = false" @drop.prevent="handleDrop">
-    <!-- 拖拽上传遮罩 -->
-    <div v-if="isDragging" class="drop-overlay">
-      <div class="drop-hint">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        <span>释放以添加附件</span>
-      </div>
-    </div>
+  <!-- 拖拽上传遮罩 -->
+  <div v-if="isDragging" class="drop-overlay">
+  <div class="drop-hint">
+  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+  <span>释放以添加附件</span>
+  </div>
+  </div>
 
-    <!-- 顶部工具栏 -->
-    <div class="compose-toolbar">
-      <button class="toolbar-btn primary" @click="sendMail" :disabled="sending">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-        <span>{{ sending ? '发送中...' : '发送' }}</span>
-      </button>
-      <button class="toolbar-btn" @click="showScheduleModal = true; initScheduleTime()" title="定时发送">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        <span>定时</span>
-      </button>
-      <button class="toolbar-btn" @click="saveDraft" :disabled="savingDraft">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-        <span>{{ savingDraft ? '保存中...' : '草稿' }}</span>
-      </button>
+  <!-- 顶部工具栏 -->
+  <div class="compose-toolbar">
+  <button class="toolbar-btn primary" @click="sendMail" :disabled="sending">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+  <span>{{ sending ? '发送中...' : '发送' }}</span>
+  </button>
+  <button class="toolbar-btn" @click="showScheduleModal = true; initScheduleTime()" title="定时发送">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+  <span>定时</span>
+  </button>
+  <button class="toolbar-btn" @click="saveDraft" :disabled="savingDraft">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+  <span>{{ savingDraft ? '保存中...' : '草稿' }}</span>
+  </button>
 
-      <!-- 签名模板选择器 -->
-      <div class="toolbar-dropdown sig-dropdown">
-        <button class="toolbar-btn" title="签名" type="button" @click="showSignaturePanel = !showSignaturePanel">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
-          <span>签名</span>
-        </button>
-        <div v-if="showSignaturePanel" class="sig-panel">
-          <!-- 内置预设模板 -->
-          <div class="sig-section">
-            <div class="sig-section-label">内置模板</div>
-            <div class="sig-preset-grid">
-              <div
-                v-for="preset in builtinSignatures"
-                :key="preset.id"
-                class="sig-preset-card"
-              >
-                <!-- 点击预览区域直接插入 -->
-                <div class="sig-preset-click-area" @click="insertSigToEditor(preset.content_html)">
-                  <div class="sig-preset-preview" v-html="preset.preview"></div>
-                  <span class="sig-preset-name">{{ preset.name }}</span>
-                </div>
-                <!-- 自定义按钮：点击打开编辑对话框 -->
-                <button
-                  class="sig-customize-btn"
-                  type="button"
-                  title="自定义此模板"
-                  @click.stop="openCustomizeDialog(preset)"
-                >
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
-                </button>
-              </div>
-            </div>
-          </div>
+  <!-- 签名模板选择器 -->
+  <div class="toolbar-dropdown sig-dropdown">
+  <button class="toolbar-btn" title="签名" type="button" @click="showSignaturePanel = !showSignaturePanel">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+  <span>签名</span>
+  </button>
+  <div v-if="showSignaturePanel" class="sig-panel">
+  <!-- 内置预设模板 -->
+  <div class="sig-section">
+  <div class="sig-section-label">内置模板</div>
+  <div class="sig-preset-grid">
+  <div
+  v-for="preset in builtinSignatures"
+  :key="preset.id"
+  class="sig-preset-card"
+  >
+  <!-- 点击预览区域直接插入 -->
+  <div class="sig-preset-click-area" @click="insertSigToEditor(preset.content_html)">
+  <div class="sig-preset-preview" v-html="preset.preview"></div>
+  <span class="sig-preset-name">{{ preset.name }}</span>
+  </div>
+  <!-- 自定义按钮：点击打开编辑对话框 -->
+  <button
+  class="sig-customize-btn"
+  type="button"
+  title="自定义此模板"
+  @click.stop="openCustomizeDialog(preset)"
+  >
+  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+  </button>
+  </div>
+  </div>
+  </div>
 
-          <!-- 自定义编辑对话框（内嵌） -->
-          <div v-if="showCustomizeDialog && showSignaturePanel" class="modal-overlay" @click.self="showCustomizeDialog = false">
-            <div class="modal-content sig-customize-modal">
-              <h3>自定义签名：{{ customizingPreset?.name }}</h3>
-              <textarea v-model="editingSigHtml" class="sig-customize-textarea" spellcheck="false"></textarea>
-              <div class="modal-actions">
-                <button class="toolbar-btn" @click="showCustomizeDialog = false">取消</button>
-                <button class="toolbar-btn primary" @click="saveCustomizedSig">保存签名</button>
-              </div>
-            </div>
-          </div>
+  <!-- 自定义编辑对话框（内嵌） -->
+  <div v-if="showCustomizeDialog && showSignaturePanel" class="modal-overlay" @click.self="showCustomizeDialog = false">
+  <div class="modal-content sig-customize-modal">
+  <h3>自定义签名：{{ customizingPreset?.name }}</h3>
+  <textarea v-model="editingSigHtml" class="sig-customize-textarea" spellcheck="false"></textarea>
+  <div class="modal-actions">
+  <button class="toolbar-btn" @click="showCustomizeDialog = false">取消</button>
+  <button class="toolbar-btn primary" @click="saveCustomizedSig">保存签名</button>
+  </div>
+  </div>
+  </div>
 
-          <!-- 编辑用户签名对话框（内嵌） -->
-          <div v-if="showEditUserSigDialog && showSignaturePanel" class="modal-overlay" @click.self="showEditUserSigDialog = false">
-            <div class="modal-content sig-customize-modal">
-              <h3>编辑签名：{{ editingUserSig?.name }}</h3>
-              <input v-model="editingUserSigName" placeholder="签名名称" class="sig-save-input" />
-              <textarea v-model="editingUserSigHtml" class="sig-customize-textarea" spellcheck="false"></textarea>
-              <div class="modal-actions">
-                <button class="toolbar-btn" @click="showEditUserSigDialog = false">取消</button>
-                <button class="toolbar-btn danger" @click="deleteEditingUserSig">删除</button>
-                <button class="toolbar-btn primary" @click="saveEditedUserSig">保存</button>
-              </div>
-            </div>
-          </div>
+  <!-- 编辑用户签名对话框（内嵌） -->
+  <div v-if="showEditUserSigDialog && showSignaturePanel" class="modal-overlay" @click.self="showEditUserSigDialog = false">
+  <div class="modal-content sig-customize-modal">
+  <h3>编辑签名：{{ editingUserSig?.name }}</h3>
+  <input v-model="editingUserSigName" placeholder="签名名称" class="sig-save-input" />
+  <textarea v-model="editingUserSigHtml" class="sig-customize-textarea" spellcheck="false"></textarea>
+  <div class="modal-actions">
+  <button class="toolbar-btn" @click="showEditUserSigDialog = false">取消</button>
+  <button class="toolbar-btn danger" @click="deleteEditingUserSig">删除</button>
+  <button class="toolbar-btn primary" @click="saveEditedUserSig">保存</button>
+  </div>
+  </div>
+  </div>
 
-          <div class="sig-panel-divider"></div>
-          <!-- 我的签名 -->
-          <div class="sig-section">
-            <div class="sig-section-label">我的签名</div>
-            <template v-if="userSigs.length > 0">
-              <div class="sig-preset-grid">
-                <div
-                  v-for="sig in userSigs"
-                  :key="'u'+sig.id"
-                  class="sig-preset-card sig-user-card"
-                >
-                  <!-- 标记：默认 / 操作按钮 -->
-                  <span v-if="sig.is_default" class="sig-default-badge-inline">默认</span>
-                  <button class="sig-delete-btn" type="button" @click.stop="deleteUserSig(sig.id)" title="删除">×</button>
-                  <button
-                    class="sig-customize-btn"
-                    type="button"
-                    title="编辑此签名"
-                    @click.stop="openEditUserSigDialog(sig)"
-                  >
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
-                  </button>
-                  <!-- 点击区域：插入签名 -->
-                  <div class="sig-preset-click-area" @click="insertSigToEditor(sig.content_html)">
-                    <div class="sig-preset-preview sig-user-preview" v-html="sig.content_html"></div>
-                    <span class="sig-preset-name">{{ sig.name }}</span>
-                  </div>
-                </div>
-              </div>
-            </template>
-            <div v-else class="sig-empty-hint">暂无自定义签名</div>
-          </div>
-          <div class="sig-panel-divider"></div>
-          <button class="sig-save-current-btn" type="button" @click="showSaveSigDialog = true">
-            + 保存签名
-          </button>
-        </div>
-      </div>
+  <div class="sig-panel-divider"></div>
+  <!-- 我的签名 -->
+  <div class="sig-section">
+  <div class="sig-section-label">我的签名</div>
+  <template v-if="userSigs.length > 0">
+  <div class="sig-preset-grid">
+  <div
+  v-for="sig in userSigs"
+  :key="'u'+sig.id"
+  class="sig-preset-card sig-user-card"
+  >
+  <!-- 标记：默认 / 操作按钮 -->
+  <span v-if="sig.is_default" class="sig-default-badge-inline">默认</span>
+  <button class="sig-delete-btn" type="button" @click.stop="deleteUserSig(sig.id)" title="删除">×</button>
+  <button
+  class="sig-customize-btn"
+  type="button"
+  title="编辑此签名"
+  @click.stop="openEditUserSigDialog(sig)"
+  >
+  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+  </button>
+  <!-- 点击区域：插入签名 -->
+  <div class="sig-preset-click-area" @click="insertSigToEditor(sig.content_html)">
+  <div class="sig-preset-preview sig-user-preview" v-html="sig.content_html"></div>
+  <span class="sig-preset-name">{{ sig.name }}</span>
+  </div>
+  </div>
+  </div>
+  </template>
+  <div v-else class="sig-empty-hint">暂无自定义签名</div>
+  </div>
+  <div class="sig-panel-divider"></div>
+  <button class="sig-save-current-btn" type="button" @click="showSaveSigDialog = true">
+  + 保存签名
+  </button>
+  </div>
+  </div>
 
-      <!-- 保存签名的内嵌对话框 -->
-      <div v-if="showSaveSigDialog && showSignaturePanel" class="modal-overlay" @click.self="showSaveSigDialog = false">
-        <div class="modal-content sig-save-dialog">
-          <input v-model="newSigName" placeholder="输入签名名称" class="sig-save-input" @keyup.enter="saveCurrentAsSig" />
-          <div class="modal-actions">
-            <button class="toolbar-btn" @click="showSaveSigDialog = false">取消</button>
-            <button class="toolbar-btn primary" @click="saveCurrentAsSig" :disabled="!newSigName.trim()">保存</button>
-          </div>
-        </div>
-      </div>
+  <!-- 保存签名的内嵌对话框 -->
+  <div v-if="showSaveSigDialog && showSignaturePanel" class="modal-overlay" @click.self="showSaveSigDialog = false">
+  <div class="modal-content sig-save-dialog">
+  <input v-model="newSigName" placeholder="输入签名名称" class="sig-save-input" @keyup.enter="saveCurrentAsSig" />
+  <div class="modal-actions">
+  <button class="toolbar-btn" @click="showSaveSigDialog = false">取消</button>
+  <button class="toolbar-btn primary" @click="saveCurrentAsSig" :disabled="!newSigName.trim()">保存</button>
+  </div>
+  </div>
+  </div>
 
-      <div class="toolbar-spacer"></div>
-      <button class="toolbar-btn danger" @click="discardMail" title="关闭">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
+  <div class="toolbar-spacer"></div>
+  <button class="toolbar-btn danger" @click="discardMail" title="关闭">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+  </button>
+  </div>
 
-    <!-- 邮件表单 -->
-    <div class="compose-form">
-      <!-- 发件人 -->
-      <div class="form-row">
-        <label>发件人</label>
-        <select v-model="fromAccountId" class="form-select">
-          <option v-for="acc in accounts" :key="acc.id" :value="acc.id">{{ acc.email }}</option>
-        </select>
-        <span class="cc-links">
-          <button v-if="!showCc" class="text-btn" @click="showCc = true">抄送</button>
-          <button v-if="!showBcc" class="text-btn" @click="showBcc = true">密送</button>
-        </span>
-      </div>
+  <!-- 邮件表单 -->
+  <div class="compose-form">
+  <!-- 发件人 -->
+  <div class="form-row">
+  <label>发件人</label>
+  <select v-model="fromAccountId" class="form-select">
+  <option v-for="acc in accounts" :key="acc.id" :value="acc.id">{{ acc.email }}</option>
+  </select>
+  <span class="cc-links">
+  <button v-if="!showCc" class="text-btn" @click="showCc = true">抄送</button>
+  <button v-if="!showBcc" class="text-btn" @click="showBcc = true">密送</button>
+  </span>
+  </div>
 
-      <!-- 收件人 -->
-      <div class="form-row">
-        <label>收件人</label>
-        <div class="tag-input tag-input-with-suggest">
-          <span v-for="(addr, i) in toList" :key="'to'+i" class="tag">
-            {{ addr }}
-            <button class="tag-remove" @click="toList.splice(i, 1)">&times;</button>
-          </span>
-          <input
-            v-model="toInput"
-            @input="toField.onInput()"
-            @keydown="handleRecipientKeydown($event, 'to')"
-            @blur="blurCloseSuggestions('to')"
-            placeholder="输入姓名或邮箱"
-            class="tag-input-field"
-          />
-          <!-- 联系人建议下拉 -->
-          <div v-if="toField.showSuggestions.value" class="suggest-dropdown">
-            <div
-              v-for="(item, idx) in toField.suggestions.value"
-              :key="idx"
-              class="suggest-item"
-              :class="{ active: idx === toField.activeIndex.value }"
-              @mousedown.prevent="clickSuggestion('to', item.email)"
-            >
-              <span class="suggest-name">{{ item.name || '(未命名)' }}</span>
-              <span class="suggest-email">{{ item.email }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
+  <!-- 收件人 -->
+  <div class="form-row">
+  <label>收件人</label>
+  <div class="tag-input tag-input-with-suggest">
+  <span v-for="(addr, i) in toList" :key="'to'+i" class="tag">
+  {{ addr }}
+  <button class="tag-remove" @click="toList.splice(i, 1)">&times;</button>
+  </span>
+  <input
+  v-model="toInput"
+  @input="toField.onInput()"
+  @keydown="handleRecipientKeydown($event, 'to')"
+  @keyup="handleRecipientKeyup($event, 'to')"
+  @blur="blurCloseSuggestions('to')"
+  placeholder="输入姓名或邮箱"
+  class="tag-input-field"
+  type="text"
+  enterkeyhint="done"
+  autocomplete="email"
+  inputmode="email"
+  />
+  <!-- 手机：软键盘回车不稳定，有输入时显示确认按钮 -->
+  <button
+  v-if="toInput.trim()"
+  type="button"
+  class="recipient-confirm-btn"
+  @mousedown.prevent="commitRecipient('to')"
+  aria-label="确认收件人"
+  >确认</button>
+  <!-- 联系人建议下拉 -->
+  <div v-if="toField.showSuggestions.value" class="suggest-dropdown">
+  <div
+  v-for="(item, idx) in toField.suggestions.value"
+  :key="idx"
+  class="suggest-item"
+  :class="{ active: idx === toField.activeIndex.value }"
+  @mousedown.prevent="clickSuggestion('to', item.email)"
+  >
+  <span class="suggest-name">{{ item.name || '(未命名)' }}</span>
+  <span class="suggest-email">{{ item.email }}</span>
+  </div>
+  </div>
+  </div>
+  </div>
 
-      <!-- 抄送（点击后显示） -->
-      <div v-if="showCc" class="form-row">
-        <label>抄送</label>
-        <div class="tag-input tag-input-with-suggest">
-          <span v-for="(addr, i) in ccList" :key="'cc'+i" class="tag">
-            {{ addr }}
-            <button class="tag-remove" @click="ccList.splice(i, 1)">&times;</button>
-          </span>
-          <input
-            v-model="ccInput"
-            @input="ccField.onInput()"
-            @keydown="handleRecipientKeydown($event, 'cc')"
-            @blur="blurCloseSuggestions('cc')"
-            placeholder="输入姓名或邮箱"
-            class="tag-input-field"
-          />
-          <!-- 联系人建议下拉 -->
-          <div v-if="ccField.showSuggestions.value" class="suggest-dropdown">
-            <div
-              v-for="(item, idx) in ccField.suggestions.value"
-              :key="idx"
-              class="suggest-item"
-              :class="{ active: idx === ccField.activeIndex.value }"
-              @mousedown.prevent="clickSuggestion('cc', item.email)"
-            >
-              <span class="suggest-name">{{ item.name || '(未命名)' }}</span>
-              <span class="suggest-email">{{ item.email }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
+  <!-- 抄送（点击后显示） -->
+  <div v-if="showCc" class="form-row">
+  <label>抄送</label>
+  <div class="tag-input tag-input-with-suggest">
+  <span v-for="(addr, i) in ccList" :key="'cc'+i" class="tag">
+  {{ addr }}
+  <button class="tag-remove" @click="ccList.splice(i, 1)">&times;</button>
+  </span>
+  <input
+  v-model="ccInput"
+  @input="ccField.onInput()"
+  @keydown="handleRecipientKeydown($event, 'cc')"
+  @keyup="handleRecipientKeyup($event, 'cc')"
+  @blur="blurCloseSuggestions('cc')"
+  placeholder="输入姓名或邮箱"
+  class="tag-input-field"
+  type="text"
+  enterkeyhint="done"
+  autocomplete="email"
+  inputmode="email"
+  />
+  <button
+  v-if="ccInput.trim()"
+  type="button"
+  class="recipient-confirm-btn"
+  @mousedown.prevent="commitRecipient('cc')"
+  aria-label="确认抄送人"
+  >确认</button>
+  <!-- 联系人建议下拉 -->
+  <div v-if="ccField.showSuggestions.value" class="suggest-dropdown">
+  <div
+  v-for="(item, idx) in ccField.suggestions.value"
+  :key="idx"
+  class="suggest-item"
+  :class="{ active: idx === ccField.activeIndex.value }"
+  @mousedown.prevent="clickSuggestion('cc', item.email)"
+  >
+  <span class="suggest-name">{{ item.name || '(未命名)' }}</span>
+  <span class="suggest-email">{{ item.email }}</span>
+  </div>
+  </div>
+  </div>
+  </div>
 
-      <!-- 密送（点击后显示） -->
-      <div v-if="showBcc" class="form-row">
-        <label>密送</label>
-        <div class="tag-input tag-input-with-suggest">
-          <span v-for="(addr, i) in bccList" :key="'bcc'+i" class="tag">
-            {{ addr }}
-            <button class="tag-remove" @click="bccList.splice(i, 1)">&times;</button>
-          </span>
-          <input
-            v-model="bccInput"
-            @input="bccField.onInput()"
-            @keydown="handleRecipientKeydown($event, 'bcc')"
-            @blur="blurCloseSuggestions('bcc')"
-            placeholder="输入姓名或邮箱"
-            class="tag-input-field"
-          />
-          <!-- 联系人建议下拉 -->
-          <div v-if="bccField.showSuggestions.value" class="suggest-dropdown">
-            <div
-              v-for="(item, idx) in bccField.suggestions.value"
-              :key="idx"
-              class="suggest-item"
-              :class="{ active: idx === bccField.activeIndex.value }"
-              @mousedown.prevent="clickSuggestion('bcc', item.email)"
-            >
-              <span class="suggest-name">{{ item.name || '(未命名)' }}</span>
-              <span class="suggest-email">{{ item.email }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
+  <!-- 密送（点击后显示） -->
+  <div v-if="showBcc" class="form-row">
+  <label>密送</label>
+  <div class="tag-input tag-input-with-suggest">
+  <span v-for="(addr, i) in bccList" :key="'bcc'+i" class="tag">
+  {{ addr }}
+  <button class="tag-remove" @click="bccList.splice(i, 1)">&times;</button>
+  </span>
+  <input
+  v-model="bccInput"
+  @input="bccField.onInput()"
+  @keydown="handleRecipientKeydown($event, 'bcc')"
+  @keyup="handleRecipientKeyup($event, 'bcc')"
+  @blur="blurCloseSuggestions('bcc')"
+  placeholder="输入姓名或邮箱"
+  class="tag-input-field"
+  type="text"
+  enterkeyhint="done"
+  autocomplete="email"
+  inputmode="email"
+  />
+  <button
+  v-if="bccInput.trim()"
+  type="button"
+  class="recipient-confirm-btn"
+  @mousedown.prevent="commitRecipient('bcc')"
+  aria-label="确认密送人"
+  >确认</button>
+  <!-- 联系人建议下拉 -->
+  <div v-if="bccField.showSuggestions.value" class="suggest-dropdown">
+  <div
+  v-for="(item, idx) in bccField.suggestions.value"
+  :key="idx"
+  class="suggest-item"
+  :class="{ active: idx === bccField.activeIndex.value }"
+  @mousedown.prevent="clickSuggestion('bcc', item.email)"
+  >
+  <span class="suggest-name">{{ item.name || '(未命名)' }}</span>
+  <span class="suggest-email">{{ item.email }}</span>
+  </div>
+  </div>
+  </div>
+  </div>
 
-      <!-- 主题 -->
-      <div class="form-row">
-        <label>主题</label>
-        <input v-model="subject" placeholder="邮件主题" class="form-input" />
-      </div>
+  <!-- 主题 -->
+  <div class="form-row">
+  <label>主题</label>
+  <input v-model="subject" placeholder="邮件主题" class="form-input" />
+  </div>
 
-      <!-- 富文本编辑器 -->
-      <div class="editor-row">
-        <TiptapEditor v-model="bodyHtml" ref="editorRef" />
-      </div>
+  <!-- 富文本编辑器 -->
+  <div class="editor-row">
+  <TiptapEditor v-model="bodyHtml" ref="editorRef" />
+  </div>
 
-      <!-- 附件区域（在编辑器下方、表单底部） -->
-      <div class="attachments-section">
-        <div class="attachments-header">
-          <label class="upload-btn">
-            <input type="file" multiple @change="handleFileSelect" class="hidden-input" />
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-            附件
-          </label>
-          <span v-if="attachments.length" class="attachments-count">
-            {{ attachments.length }}个 · {{ formatSize(totalAttachmentSize) }} / {{ attachmentLimitMb }}MB
-            <span v-if="isAttachmentOverLimit" class="att-warning">超限</span>
-          </span>
-        </div>
-        <div v-if="attachments.length" class="attachments-list">
-          <div v-for="(att, i) in attachments" :key="i" class="attachment-item">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-            <span class="att-name">{{ att.filename }}</span>
-            <span class="att-size">{{ formatSize(att.size) }}</span>
-            <button class="att-remove" @click="removeAttachment(i)">&times;</button>
-          </div>
-        </div>
-        <!-- 超限提示 -->
-        <div v-if="isAttachmentOverLimit" class="att-over-limit-tip">
-          附件总大小超过当前邮箱限制（{{ attachmentLimitMb }}MB），发送将被拒绝，请减少附件或使用更小的文件
-        </div>
-      </div>
-    </div>
+  <!-- 附件区域（在编辑器下方、表单底部） -->
+  <div class="attachments-section">
+  <div class="attachments-header">
+  <label class="upload-btn">
+  <input type="file" multiple @change="handleFileSelect" class="hidden-input" />
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+  附件
+  </label>
+  <span v-if="attachments.length" class="attachments-count">
+  {{ attachments.length }}个 · {{ formatSize(totalAttachmentSize) }} / {{ attachmentLimitMb }}MB
+  <span v-if="isAttachmentOverLimit" class="att-warning">超限</span>
+  </span>
+  </div>
+  <div v-if="attachments.length" class="attachments-list">
+  <div v-for="(att, i) in attachments" :key="i" class="attachment-item">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+  <span class="att-name">{{ att.filename }}</span>
+  <span class="att-size">{{ formatSize(att.size) }}</span>
+  <button class="att-remove" @click="removeAttachment(i)">&times;</button>
+  </div>
+  </div>
+  <!-- 超限提示 -->
+  <div v-if="isAttachmentOverLimit" class="att-over-limit-tip">
+  附件总大小超过当前邮箱限制（{{ attachmentLimitMb }}MB），发送将被拒绝，请减少附件或使用更小的文件
+  </div>
+  </div>
+  </div>
 
-    <!-- 定时发送弹窗 -->
-    <div v-if="showScheduleModal" class="modal-overlay" @click.self="showScheduleModal = false">
-      <div class="modal-content schedule-modal">
-        <div class="schedule-header">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          <h3>定时发送</h3>
-        </div>
-        <p class="modal-desc">选择发送时间，邮件将在指定时间自动发送</p>
+  <!-- 定时发送弹窗 -->
+  <div v-if="showScheduleModal" class="modal-overlay" @click.self="showScheduleModal = false">
+  <div class="modal-content schedule-modal">
+  <div class="schedule-header">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+  <h3>定时发送</h3>
+  </div>
+  <p class="modal-desc">选择发送时间，邮件将在指定时间自动发送</p>
 
-        <!-- 日期时间选择卡片 -->
-        <div class="schedule-card">
-          <div class="schedule-card-row">
-            <select v-model="scheduleYear" class="sc-select sc-select-wide">
-              <option v-for="y in yearOptions" :key="y" :value="y">{{ y }}</option>
-            </select>
-            <span class="sc-sep">/</span>
-            <select v-model="scheduleMonth" class="sc-select">
-              <option v-for="m in 12" :key="m" :value="m">{{ String(m).padStart(2, '0') }}</option>
-            </select>
-            <span class="sc-sep">/</span>
-            <select v-model="scheduleDay" class="sc-select">
-              <option v-for="d in dayOptions" :key="d" :value="d">{{ String(d).padStart(2, '0') }}</option>
-            </select>
-            <span class="sc-gap"></span>
-            <select v-model="scheduleHour" class="sc-select">
-              <option v-for="h in 24" :key="h" :value="h - 1">{{ String(h - 1).padStart(2, '0') }}</option>
-            </select>
-            <span class="sc-sep">:</span>
-            <select v-model="scheduleMinute" class="sc-select">
-              <option v-for="m in 60" :key="m" :value="m - 1">{{ String(m - 1).padStart(2, '0') }}</option>
-            </select>
-          </div>
-        </div>
+  <!-- 日期时间选择卡片 -->
+  <div class="schedule-card">
+  <div class="schedule-card-row">
+  <select v-model="scheduleYear" class="sc-select sc-select-wide">
+  <option v-for="y in yearOptions" :key="y" :value="y">{{ y }}</option>
+  </select>
+  <span class="sc-sep">/</span>
+  <select v-model="scheduleMonth" class="sc-select">
+  <option v-for="m in 12" :key="m" :value="m">{{ String(m).padStart(2, '0') }}</option>
+  </select>
+  <span class="sc-sep">/</span>
+  <select v-model="scheduleDay" class="sc-select">
+  <option v-for="d in dayOptions" :key="d" :value="d">{{ String(d).padStart(2, '0') }}</option>
+  </select>
+  <span class="sc-gap"></span>
+  <select v-model="scheduleHour" class="sc-select">
+  <option v-for="h in 24" :key="h" :value="h - 1">{{ String(h - 1).padStart(2, '0') }}</option>
+  </select>
+  <span class="sc-sep">:</span>
+  <select v-model="scheduleMinute" class="sc-select">
+  <option v-for="m in 60" :key="m" :value="m - 1">{{ String(m - 1).padStart(2, '0') }}</option>
+  </select>
+  </div>
+  </div>
 
-        <!-- 预览条 -->
-        <div class="schedule-preview-bar">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          <span>将于 <strong>{{ schedulePreview }}</strong> 自动发送</span>
-        </div>
+  <!-- 预览条 -->
+  <div class="schedule-preview-bar">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+  <span>将于 <strong>{{ schedulePreview }}</strong> 自动发送</span>
+  </div>
 
-        <!-- 待发邮件列表（有待发任务时才显示） -->
-        <div v-if="scheduledJobs.length > 0" class="scheduled-list">
-          <div class="scheduled-list-title">待发邮件</div>
-          <div v-for="job in scheduledJobs" :key="job.id" class="scheduled-item">
-            <div class="scheduled-item-info">
-              <span class="scheduled-item-subject">{{ job.kwargs?.subject || '(无主题)' }}</span>
-              <span class="scheduled-item-time">{{ formatScheduleTime(job.next_run_time) }}</span>
-            </div>
-            <button class="scheduled-item-cancel" @click="cancelSchedule(job.id)" title="取消发送">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-          </div>
-        </div>
-        <div class="modal-actions">
-          <button class="toolbar-btn" @click="showScheduleModal = false">取消</button>
-          <button class="toolbar-btn primary" @click="scheduleMail" :disabled="!isScheduleValid">定时发送</button>
-        </div>
-      </div>
-    </div>
+  <!-- 待发邮件列表（有待发任务时才显示） -->
+  <div v-if="scheduledJobs.length > 0" class="scheduled-list">
+  <div class="scheduled-list-title">待发邮件</div>
+  <div v-for="job in scheduledJobs" :key="job.id" class="scheduled-item">
+  <div class="scheduled-item-info">
+  <span class="scheduled-item-subject">{{ job.kwargs?.subject || '(无主题)' }}</span>
+  <span class="scheduled-item-time">{{ formatScheduleTime(job.next_run_time) }}</span>
+  </div>
+  <button class="scheduled-item-cancel" @click="cancelSchedule(job.id)" title="取消发送">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+  </button>
+  </div>
+  </div>
+  <div class="modal-actions">
+  <button class="toolbar-btn" @click="showScheduleModal = false">取消</button>
+  <button class="toolbar-btn primary" @click="scheduleMail" :disabled="!isScheduleValid">定时发送</button>
+  </div>
+  </div>
+  </div>
 
-    <!-- 定时发送成功弹窗 -->
-    <div v-if="showScheduleSuccessModal" class="modal-overlay" @click.self="showScheduleSuccessModal = false">
-      <div class="modal-content success-modal">
-        <div class="success-icon">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#34C759" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-        </div>
-        <h3>定时任务已创建</h3>
-        <p class="success-desc">邮件将在 <strong>{{ scheduleSuccessTime }}</strong> 自动发送</p>
-        <div class="modal-actions" style="justify-content: center;">
-          <button class="toolbar-btn primary" @click="showScheduleSuccessModal = false">知道了</button>
-        </div>
-      </div>
-    </div>
+  <!-- 定时发送成功弹窗 -->
+  <div v-if="showScheduleSuccessModal" class="modal-overlay" @click.self="showScheduleSuccessModal = false">
+  <div class="modal-content success-modal">
+  <div class="success-icon">
+  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#34C759" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+  </div>
+  <h3>定时任务已创建</h3>
+  <p class="success-desc">邮件将在 <strong>{{ scheduleSuccessTime }}</strong> 自动发送</p>
+  <div class="modal-actions" style="justify-content: center;">
+  <button class="toolbar-btn primary" @click="showScheduleSuccessModal = false">知道了</button>
+  </div>
+  </div>
+  </div>
 
-    <!-- 确认对话框 -->
-    <div v-if="showConfirmDialog" class="modal-overlay" @click.self="showConfirmDialog = false">
-      <div class="modal-content confirm-modal">
-        <div class="confirm-icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        </div>
-        <p class="confirm-text">{{ confirmMessage }}</p>
-        <div class="modal-actions">
-          <button class="toolbar-btn" @click="showConfirmDialog = false">取消</button>
-          <button class="toolbar-btn danger" @click="confirmCallback(); showConfirmDialog = false">确认</button>
-        </div>
-      </div>
-    </div>
+  <!-- 确认对话框 -->
+  <div v-if="showConfirmDialog" class="modal-overlay" @click.self="showConfirmDialog = false">
+  <div class="modal-content confirm-modal">
+  <div class="confirm-icon">
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+  </div>
+  <p class="confirm-text">{{ confirmMessage }}</p>
+  <div class="modal-actions">
+  <button class="toolbar-btn" @click="showConfirmDialog = false">取消</button>
+  <button class="toolbar-btn danger" @click="confirmCallback(); showConfirmDialog = false">确认</button>
+  </div>
+  </div>
+  </div>
 
-    <!-- Toast 通知 -->
-    <Transition name="toast">
-      <div v-if="toast.visible" class="toast" :class="toast.type">
-        <svg v-if="toast.type === 'success'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-        <svg v-else-if="toast.type === 'error'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-        <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        <span>{{ toast.message }}</span>
-      </div>
-    </Transition>
+  <!-- Toast 通知 -->
+  <Transition name="toast">
+  <div v-if="toast.visible" class="toast" :class="toast.type">
+  <svg v-if="toast.type === 'success'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+  <svg v-else-if="toast.type === 'error'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+  <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+  <span>{{ toast.message }}</span>
+  </div>
+  </Transition>
   </div>
 </template>
 
@@ -409,6 +446,8 @@ const ccList = ref<string[]>([]);
 const bccList = ref<string[]>([]);
 const subject = ref('');
 const bodyHtml = ref('');
+// 回复草稿携带的 RFC Message-ID，发送时作为 In-Reply-To
+const inReplyTo = ref('');
 const showCc = ref(false);
 const showBcc = ref(false);
 
@@ -492,22 +531,22 @@ const scheduleSuccessTime = ref('');
 /** 加载待执行的定时发送任务 */
 async function loadScheduledJobs() {
   try {
-    const data = await api.get('/messages/scheduled') as any;
-    const allJobs = data?.jobs || [];
-    // 只显示有待执行时间的任务（已执行的任务 next_run_time 为 null）
-    scheduledJobs.value = allJobs.filter((j: any) => j.next_run_time);
-    console.log('[定时发送] 加载待发列表:', scheduledJobs.value.length, '条', scheduledJobs.value);
+  const data = await api.get('/messages/scheduled') as any;
+  const allJobs = data?.jobs || [];
+  // 只显示有待执行时间的任务（已执行的任务 next_run_time 为 null）
+  scheduledJobs.value = allJobs.filter((j: any) => j.next_run_time);
+  console.log('[定时发送] 加载待发列表:', scheduledJobs.value.length, '条', scheduledJobs.value);
   } catch (e) {
-    console.warn('[定时发送] 加载待发列表失败:', e);
-    scheduledJobs.value = [];
+  console.warn('[定时发送] 加载待发列表失败:', e);
+  scheduledJobs.value = [];
   }
 }
 
 /** 取消定时发送任务 */
 async function cancelSchedule(jobId: string) {
   try {
-    await api.delete(`/messages/scheduled/${jobId}`);
-    scheduledJobs.value = scheduledJobs.value.filter((j: any) => j.id !== jobId);
+  await api.delete(`/messages/scheduled/${jobId}`);
+  scheduledJobs.value = scheduledJobs.value.filter((j: any) => j.id !== jobId);
   } catch { /* 忽略 */ }
 }
 
@@ -545,13 +584,13 @@ const schedulePreview = computed(() => {
 function formatScheduleTime(isoStr: string): string {
   if (!isoStr) return '';
   try {
-    const d = new Date(isoStr);
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    const h = String(d.getHours()).padStart(2, '0');
-    const min = String(d.getMinutes()).padStart(2, '0');
-    return `${y}-${m}-${day} ${h}:${min}`;
+  const d = new Date(isoStr);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const h = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${y}-${m}-${day} ${h}:${min}`;
   } catch { return isoStr; }
 }
 
@@ -578,28 +617,28 @@ const editorRef = ref<InstanceType<typeof import('../components/TiptapEditor.vue
 /** 内置预设签名模板（4款精美常用签名） */
 const builtinSignatures = [
   {
-    id: 'business',
-    name: '商务正式',
-    content_html: '<div style="border-top: 2px solid #333; padding-top: 10px; margin-top: 16px; font-family: -apple-system, sans-serif;"><strong style="font-size: 14px; color: #1a1a1a;">张三</strong><br><span style="font-size: 12px; color: #666;">产品经理 | 飞邮科技</span><br><span style="font-size: 11px; color: #999;">📧 zhangsan@flymail.com &nbsp; 📱 138-xxxx-xxxx</span></div>',
-    preview: '<div style="padding:6px 0;font-size:9px;line-height:1.5;color:#666"><b>张三</b><br>产品经理 | 飞邮科技<br>📧 zhangsan@flymail.com</div>',
+  id: 'business',
+  name: '商务正式',
+  content_html: '<div style="border-top: 2px solid #333; padding-top: 10px; margin-top: 16px; font-family: -apple-system, sans-serif;"><strong style="font-size: 14px; color: #1a1a1a;">张三</strong><br><span style="font-size: 12px; color: #666;">产品经理 | 飞邮科技</span><br><span style="font-size: 11px; color: #999;">📧 zhangsan@flymail.com &nbsp; 📱 138-xxxx-xxxx</span></div>',
+  preview: '<div style="padding:6px 0;font-size:9px;line-height:1.5;color:#666"><b>张三</b><br>产品经理 | 飞邮科技<br>📧 zhangsan@flymail.com</div>',
   },
   {
-    id: 'minimal',
-    name: '简洁现代',
-    content_html: '<div style="margin-top: 18px; font-family: -apple-system, sans-serif; color: #555; font-size: 13px; line-height: 1.8;"><span style="color: #007AFF; font-weight: 600;">张三</span>&nbsp;&nbsp;<span style="color: #999;">|</span>&nbsp;&nbsp;<em style="color: #888;">用心做好每一封邮件</em></div>',
-    preview: '<div style="padding:6px 0;font-size:9px;line-height:1.5"><b style="color:#007AFF">张三</b> <span style="color:#ccc">|</span> <i style="color:#999">用心做好每一封邮件</i></div>',
+  id: 'minimal',
+  name: '简洁现代',
+  content_html: '<div style="margin-top: 18px; font-family: -apple-system, sans-serif; color: #555; font-size: 13px; line-height: 1.8;"><span style="color: #007AFF; font-weight: 600;">张三</span>&nbsp;&nbsp;<span style="color: #999;">|</span>&nbsp;&nbsp;<em style="color: #888;">用心做好每一封邮件</em></div>',
+  preview: '<div style="padding:6px 0;font-size:9px;line-height:1.5"><b style="color:#007AFF">张三</b> <span style="color:#ccc">|</span> <i style="color:#999">用心做好每一封邮件</i></div>',
   },
   {
-    id: 'creative',
-    name: '创意个性',
-    content_html: '<div style="margin-top: 16px; font-family: -apple-system, sans-serif; border-left: 3px solid #ff6b35; padding-left: 12px;"><span style="font-size: 15px; font-weight: 700; color: #1a1a1a;">张三</span><br><span style="font-size: 12px; color: #888;">保持好奇，保持热爱 ✨</span><br><a href="mailto:zhangsan@flymail.com" style="font-size: 11px; color: #ff6b35; text-decoration: none;">zhangsan@flymail.com →</a></div>',
-    preview: '<div style="padding:6px 0;font-size:9px;line-height:1.5;border-left:2px solid #ff6b35;padding-left:6px"><b>张三</b><br><span style="color:#999">保持好奇，保持热爱 ✨</span></div>',
+  id: 'creative',
+  name: '创意个性',
+  content_html: '<div style="margin-top: 16px; font-family: -apple-system, sans-serif; border-left: 3px solid #ff6b35; padding-left: 12px;"><span style="font-size: 15px; font-weight: 700; color: #1a1a1a;">张三</span><br><span style="font-size: 12px; color: #888;">保持好奇，保持热爱 ✨</span><br><a href="mailto:zhangsan@flymail.com" style="font-size: 11px; color: #ff6b35; text-decoration: none;">zhangsan@flymail.com →</a></div>',
+  preview: '<div style="padding:6px 0;font-size:9px;line-height:1.5;border-left:2px solid #ff6b35;padding-left:6px"><b>张三</b><br><span style="color:#999">保持好奇，保持热爱 ✨</span></div>',
   },
   {
-    id: 'english',
-    name: '英文正式',
-    content_html: '<div style="margin-top: 16px; font-family: Georgia, serif; border-top: 1px solid #ccc; padding-top: 10px;"><span style="font-size: 14px; color: #222; font-style: italic;">Zhang San</span><br><span style="font-size: 11px; color: #777;">Product Manager, FlyMail Inc.</span><br><span style="font-size: 10px; color: #aaa;">Tel: +86-138-xxxx-xxxx &nbsp; Email: zhangsan@flymail.com</span></div>',
-    preview: '<div style="padding:6px 0;font-size:9px;line-height:1.5;color:#555;font-family:Georgia,serif"><i>Zhang San</i><br>Product Manager, FlyMail Inc.</div>',
+  id: 'english',
+  name: '英文正式',
+  content_html: '<div style="margin-top: 16px; font-family: Georgia, serif; border-top: 1px solid #ccc; padding-top: 10px;"><span style="font-size: 14px; color: #222; font-style: italic;">Zhang San</span><br><span style="font-size: 11px; color: #777;">Product Manager, FlyMail Inc.</span><br><span style="font-size: 10px; color: #aaa;">Tel: +86-138-xxxx-xxxx &nbsp; Email: zhangsan@flymail.com</span></div>',
+  preview: '<div style="padding:6px 0;font-size:9px;line-height:1.5;color:#555;font-family:Georgia,serif"><i>Zhang San</i><br>Product Manager, FlyMail Inc.</div>',
   },
 ];
 
@@ -609,15 +648,15 @@ const userSigs = ref<UserSig[]>([]);
 
 async function loadUserSigs() {
   try {
-    const data = await api.get('/signatures') as any;
-    userSigs.value = data.signatures || [];
+  const data = await api.get('/signatures') as any;
+  userSigs.value = data.signatures || [];
   } catch { userSigs.value = []; }
 }
 
 /** 通过编辑器 ref 插入签名到光标位置 */
 function insertSigToEditor(contentHtml: string) {
   if (editorRef.value) {
-    editorRef.value.insertText(contentHtml);
+  editorRef.value.insertText(contentHtml);
   }
   showSignaturePanel.value = false;
 }
@@ -627,23 +666,23 @@ async function saveCurrentAsSig() {
   const name = newSigName.value.trim();
   if (!name || !editorRef.value) return;
   try {
-    const htmlContent = editorRef.value.getHTML?.() || '';
-    await api.post('/signatures', {
-      name,
-      content_html: htmlContent,
-      is_default: userSigs.value.length === 0 ? true : undefined,
-    });
-    newSigName.value = '';
-    showSaveSigDialog.value = false;
-    await loadUserSigs();
+  const htmlContent = editorRef.value.getHTML?.() || '';
+  await api.post('/signatures', {
+  name,
+  content_html: htmlContent,
+  is_default: userSigs.value.length === 0 ? true : undefined,
+  });
+  newSigName.value = '';
+  showSaveSigDialog.value = false;
+  await loadUserSigs();
   } catch (e: any) { console.error('保存签名失败:', e); }
 }
 
 /** 删除用户签名 */
 async function deleteUserSig(sigId: number) {
   try {
-    await api.delete(`/signatures/${sigId}`);
-    await loadUserSigs();
+  await api.delete(`/signatures/${sigId}`);
+  await loadUserSigs();
   } catch (e: any) { console.error('删除签名失败:', e); }
 }
 
@@ -664,29 +703,29 @@ function openCustomizeDialog(preset: { id: string; name: string; content_html: s
 function formatHtmlForEdit(html: string): string {
   // 简单格式化：在 > 后换行，缩进子标签
   return html
-    .replace(/></g, '>\n<')
-    .split('\n')
-    .map((line, i) => {
-      if (line.match(/^<\//)) return '  '.repeat(Math.max(0, i > 0 ? 1 : 0)) + line;
-      return line;
-    })
-    .join('\n');
+  .replace(/></g, '>\n<')
+  .split('\n')
+  .map((line, i) => {
+  if (line.match(/^<\//)) return '  '.repeat(Math.max(0, i > 0 ? 1 : 0)) + line;
+  return line;
+  })
+  .join('\n');
 }
 
 /** 保存自定义后的签名到"我的签名"列表 */
 async function saveCustomizedSig() {
   if (!customizingPreset.value) return;
   try {
-    // 名称：基于原模板名 + "(自定义)"
-    const baseName = customizingPreset.value.name;
-    const name = `${baseName}(自定义)`;
-    await api.post('/signatures', {
-      name,
-      content_html: editingSigHtml.value,
-      is_default: userSigs.value.length === 0 ? true : undefined,
-    });
-    showCustomizeDialog.value = false;
-    await loadUserSigs();
+  // 名称：基于原模板名 + "(自定义)"
+  const baseName = customizingPreset.value.name;
+  const name = `${baseName}(自定义)`;
+  await api.post('/signatures', {
+  name,
+  content_html: editingSigHtml.value,
+  is_default: userSigs.value.length === 0 ? true : undefined,
+  });
+  showCustomizeDialog.value = false;
+  await loadUserSigs();
   } catch (e: any) { console.error('保存自定义签名失败:', e); }
 }
 
@@ -708,13 +747,13 @@ function openEditUserSigDialog(sig: UserSig) {
 async function saveEditedUserSig() {
   if (!editingUserSig.value) return;
   try {
-    await api.put(`/signatures/${editingUserSig.value.id}`, {
-      name: editingUserSigName.value.trim(),
-      content_html: editingUserSigHtml.value,
-      is_default: editingUserSig.value.is_default,
-    });
-    showEditUserSigDialog.value = false;
-    await loadUserSigs();
+  await api.put(`/signatures/${editingUserSig.value.id}`, {
+  name: editingUserSigName.value.trim(),
+  content_html: editingUserSigHtml.value,
+  is_default: editingUserSig.value.is_default,
+  });
+  showEditUserSigDialog.value = false;
+  await loadUserSigs();
   } catch (e: any) { console.error('保存签名失败:', e); }
 }
 
@@ -722,9 +761,9 @@ async function saveEditedUserSig() {
 async function deleteEditingUserSig() {
   if (!editingUserSig.value) return;
   try {
-    await api.delete(`/signatures/${editingUserSig.value.id}`);
-    showEditUserSigDialog.value = false;
-    await loadUserSigs();
+  await api.delete(`/signatures/${editingUserSig.value.id}`);
+  showEditUserSigDialog.value = false;
+  await loadUserSigs();
   } catch (e: any) { console.error('删除签名失败:', e); }
 }
 
@@ -733,58 +772,92 @@ onMounted(async () => {
   // 消费回复/转发草稿数据
   const draft = mailStore.consumeComposeDraft();
   if (draft) {
-    toList.value = draft.to || [];
-    ccList.value = draft.cc || [];
-    subject.value = draft.subject || '';
-    bodyHtml.value = draft.body_html || '';
-    if (draft.account_id) fromAccountId.value = draft.account_id;
-    if (ccList.value.length > 0) showCc.value = true;
-    if (bccList.value.length > 0) showBcc.value = true;
+  toList.value = draft.to || [];
+  ccList.value = draft.cc || [];
+  subject.value = draft.subject || '';
+  bodyHtml.value = draft.body_html || '';
+  // 保存回复线程头（RFC Message-ID），发送/定时时传给后端
+  inReplyTo.value = draft.in_reply_to || '';
+  if (draft.account_id) fromAccountId.value = draft.account_id;
+  if (ccList.value.length > 0) showCc.value = true;
+  if (bccList.value.length > 0) showBcc.value = true;
   }
 
   if (!fromAccountId.value && accounts.value.length > 0) {
-    fromAccountId.value = accounts.value[0].id;
+  fromAccountId.value = accounts.value[0].id;
   }
 
   // 加载默认签名（草稿数据已有正文时不再插入签名）
   if (!draft?.body_html) {
-    try {
-      const data = await api.get('/signatures') as any;
-      // 找到 is_default=1 的签名模板
-      const defaultSig = data.signatures?.find((s: any) => s.is_default);
-      if (defaultSig?.content_html) {
-        bodyHtml.value = '<p><br></p>' + defaultSig.content_html;
-      }
-    } catch {
-      // 签名加载失败不影响写邮件
-    }
+  try {
+  const data = await api.get('/signatures') as any;
+  // 找到 is_default=1 的签名模板
+  const defaultSig = data.signatures?.find((s: any) => s.is_default);
+  if (defaultSig?.content_html) {
+  bodyHtml.value = '<p><br></p>' + defaultSig.content_html;
+  }
+  } catch {
+  // 签名加载失败不影响写邮件
+  }
   }
 
   // 加载用户自定义签名列表（用于签名面板）
   loadUserSigs();
 });
 
+/** 从输入文本提取邮箱（兼容「姓名 <email>」与尾部分隔符） */
+function extractRecipientEmail(raw: string): string {
+  const s = raw.trim().replace(/[,;，；\s]+$/g, '').trim();
+  if (!s) return '';
+  // 优先取尖括号内的地址
+  const m = s.match(/<([^<>]+@[^<>]+)>/);
+  if (m) return m[1].trim();
+  return s;
+}
+
+/** 触控/窄屏：软键盘回车不稳定，需 keyup / 失焦 / 确认按钮兜底 */
+function isMobileRecipientEnv(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const coarse = window.matchMedia('(pointer: coarse)').matches;
+    const narrow = window.matchMedia('(max-width: 768px)').matches;
+    return coarse || narrow;
+  } catch {
+    return false;
+  }
+}
+
 // 添加收件人（支持选中建议项或直接输入邮箱）
-function addRecipient(field: 'to' | 'cc' | 'bcc') {
+function addRecipient(field: 'to' | 'cc' | 'bcc'): boolean {
   const inputRef = field === 'to' ? toInput : field === 'cc' ? ccInput : bccInput;
   const listRef = field === 'to' ? toList : field === 'cc' ? ccList : bccList;
-  // 兼容"姓名 <邮箱>"格式：剥离尖括号外的内容
-  const email = inputRef.value.trim().replace(/,$/, '').replace(/<[^>]*>/g, '').trim();
-  if (!email) return;
+  const email = extractRecipientEmail(inputRef.value);
+  if (!email) return false;
   // 简单邮箱格式校验
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return false;
   if (!listRef.value.includes(email)) {
     listRef.value.push(email);
   }
   inputRef.value = '';
+  const fieldState = field === 'to' ? toField : field === 'cc' ? ccField : bccField;
+  fieldState.closeSuggestions();
+  return true;
 }
 
-// 处理输入框键盘事件：优先交给自动补全处理，未处理再走原有的回车添加逻辑
+/** 确认当前输入为标签（回车 / 逗号 / 确认按钮 / 失焦 共用） */
+function commitRecipient(field: 'to' | 'cc' | 'bcc') {
+  addRecipient(field);
+}
+
+// 处理输入框键盘事件：优先自动补全；Web 端回车确认保持不变
 function handleRecipientKeydown(e: KeyboardEvent, field: 'to' | 'cc' | 'bcc') {
+  // 中文输入法组词中，回车是「上屏」不是「确认收件人」
+  if (e.isComposing || (e as any).keyCode === 229) return;
+
   const fieldState = field === 'to' ? toField : field === 'cc' ? ccField : bccField;
   const { handled, selected } = fieldState.handleKeydown(e);
   if (handled && selected) {
-    // 选中了联系人建议项：直接用邮箱地址加入标签列表
+    e.preventDefault();
     const listRef = field === 'to' ? toList : field === 'cc' ? ccList : bccList;
     if (!listRef.value.includes(selected.email)) {
       listRef.value.push(selected.email);
@@ -792,8 +865,29 @@ function handleRecipientKeydown(e: KeyboardEvent, field: 'to' | 'cc' | 'bcc') {
     if (field === 'to') toInput.value = '';
     else if (field === 'cc') ccInput.value = '';
     else bccInput.value = '';
-  } else if (!handled && e.key === 'Enter') {
-    addRecipient(field);
+    return;
+  }
+
+  // 回车 / 逗号 / 分号：确认当前输入（Web 原逻辑 + 防移动端把回车当换行）
+  const isConfirmKey =
+    e.key === 'Enter' || e.key === ',' || e.key === ';' || e.key === '，' || e.key === '；'
+    || e.key === '、';
+  if (!handled && isConfirmKey) {
+    e.preventDefault();
+    commitRecipient(field);
+  }
+}
+
+/**
+ * 仅手机端兜底：部分 Android 软键盘对「完成」只在 keyup 上报 Enter。
+ * Web 端不走此逻辑，避免与 keydown 重复确认。
+ */
+function handleRecipientKeyup(e: KeyboardEvent, field: 'to' | 'cc' | 'bcc') {
+  if (!isMobileRecipientEnv()) return;
+  if (e.isComposing || (e as any).keyCode === 229) return;
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    commitRecipient(field);
   }
 }
 
@@ -810,8 +904,10 @@ function clickSuggestion(field: 'to' | 'cc' | 'bcc', email: string) {
   fieldState.closeSuggestions();
 }
 
-// 失焦时延迟关闭下拉（避免点击下拉项前被 blur 关闭）
+// 失焦：合法邮箱则自动确认（手机点空白结束输入的主路径）；再延迟关闭下拉
 function blurCloseSuggestions(field: 'to' | 'cc' | 'bcc') {
+  // 点击下拉建议时 mousedown.prevent 会先处理选中；此处仅提交已是完整邮箱的文本
+  commitRecipient(field);
   const fieldState = field === 'to' ? toField : field === 'cc' ? ccField : bccField;
   setTimeout(() => fieldState.closeSuggestions(), 150);
 }
@@ -819,27 +915,29 @@ function blurCloseSuggestions(field: 'to' | 'cc' | 'bcc') {
 // 发送邮件
 async function sendMail() {
   if (toList.value.length === 0) {
-    showToast('请输入收件人', 'info');
-    return;
+  showToast('请输入收件人', 'info');
+  return;
   }
   sending.value = true;
   try {
-    await api.post('/messages/compose', {
-      account_id: fromAccountId.value,
-      to: toList.value,
-      cc: ccList.value,
-      bcc: bccList.value,
-      subject: subject.value,
-      body_html: bodyHtml.value,
-      attachments: attachments.value.map(a => a.path),
-      action: 'send',
-    });
-    showToast('邮件发送成功', 'success');
-    emit('sent');
+  await api.post('/messages/compose', {
+  account_id: fromAccountId.value,
+  to: toList.value,
+  cc: ccList.value,
+  bcc: bccList.value,
+  subject: subject.value,
+  body_html: bodyHtml.value,
+  attachments: attachments.value.map(a => a.path),
+  action: 'send',
+  // 回复时带上 RFC Message-ID，保证对方客户端串线程
+  in_reply_to: inReplyTo.value || undefined,
+  });
+  showToast('邮件发送成功', 'success');
+  emit('sent');
   } catch (e: any) {
-    showToast('发送失败: ' + (e.response?.data?.error || e.message), 'error');
+  showToast('发送失败: ' + (e.response?.data?.error || e.message), 'error');
   } finally {
-    sending.value = false;
+  sending.value = false;
   }
 }
 
@@ -847,32 +945,32 @@ async function sendMail() {
 async function saveDraft() {
   savingDraft.value = true;
   try {
-    await api.post('/messages/compose', {
-      account_id: fromAccountId.value,
-      to: toList.value,
-      cc: ccList.value,
-      bcc: bccList.value,
-      subject: subject.value,
-      body_html: bodyHtml.value,
-      action: 'draft',
-    });
-    showToast('草稿已保存', 'success');
+  await api.post('/messages/compose', {
+  account_id: fromAccountId.value,
+  to: toList.value,
+  cc: ccList.value,
+  bcc: bccList.value,
+  subject: subject.value,
+  body_html: bodyHtml.value,
+  action: 'draft',
+  });
+  showToast('草稿已保存', 'success');
   } catch (e: any) {
-    showToast('保存草稿失败: ' + (e.response?.data?.error || e.message), 'error');
+  showToast('保存草稿失败: ' + (e.response?.data?.error || e.message), 'error');
   } finally {
-    savingDraft.value = false;
+  savingDraft.value = false;
   }
 }
 
 // 定时发送
 async function scheduleMail() {
   if (toList.value.length === 0) {
-    showToast('请输入收件人', 'info');
-    return;
+  showToast('请输入收件人', 'info');
+  return;
   }
   if (!isScheduleValid.value) {
-    showToast('请选择未来的时间', 'info');
-    return;
+  showToast('请选择未来的时间', 'info');
+  return;
   }
   // 组装 ISO 时间字符串
   const y = scheduleYear.value;
@@ -882,32 +980,34 @@ async function scheduleMail() {
   const min = String(scheduleMinute.value).padStart(2, '0');
   const scheduleTimeISO = `${y}-${m}-${d}T${h}:${min}:00`;
   try {
-    await api.post('/messages/compose', {
-      account_id: fromAccountId.value,
-      to: toList.value,
-      cc: ccList.value,
-      bcc: bccList.value,
-      subject: subject.value,
-      body_html: bodyHtml.value,
-      attachments: attachments.value.map(a => a.path),
-      action: 'schedule',
-      schedule_time: scheduleTimeISO,
-    });
-    showScheduleModal.value = false;
-    // 不跳转页面，显示成功弹窗
-    scheduleSuccessTime.value = schedulePreview.value;
-    showScheduleSuccessModal.value = true;
+  await api.post('/messages/compose', {
+  account_id: fromAccountId.value,
+  to: toList.value,
+  cc: ccList.value,
+  bcc: bccList.value,
+  subject: subject.value,
+  body_html: bodyHtml.value,
+  attachments: attachments.value.map(a => a.path),
+  action: 'schedule',
+  schedule_time: scheduleTimeISO,
+  // 定时发送同样带上回复线程头
+  in_reply_to: inReplyTo.value || undefined,
+  });
+  showScheduleModal.value = false;
+  // 不跳转页面，显示成功弹窗
+  scheduleSuccessTime.value = schedulePreview.value;
+  showScheduleSuccessModal.value = true;
   } catch (e: any) {
-    showToast('设置定时发送失败: ' + (e.response?.data?.error || e.message), 'error');
+  showToast('设置定时发送失败: ' + (e.response?.data?.error || e.message), 'error');
   }
 }
 
 // 关闭邮件
 function discardMail() {
   if (subject.value || bodyHtml.value || toList.value.length > 0) {
-    showConfirm('确定关闭写邮件？未保存的内容将丢失', () => { emit('discard'); });
+  showConfirm('确定关闭写邮件？未保存的内容将丢失', () => { emit('discard'); });
   } else {
-    emit('discard');
+  emit('discard');
   }
 }
 
@@ -916,7 +1016,7 @@ async function handleFileSelect(event: Event) {
   const input = event.target as HTMLInputElement;
   if (!input.files) return;
   for (const file of Array.from(input.files)) {
-    await uploadFile(file);
+  await uploadFile(file);
   }
   input.value = '';
 }
@@ -925,7 +1025,7 @@ async function handleDrop(event: DragEvent) {
   isDragging.value = false;
   if (!event.dataTransfer?.files) return;
   for (const file of Array.from(event.dataTransfer.files)) {
-    await uploadFile(file);
+  await uploadFile(file);
   }
 }
 
@@ -933,33 +1033,33 @@ async function uploadFile(file: File) {
   // 前端预检查：文件超过当前邮箱平台的附件限制时，提示具体限制值
   const limitBytes = attachmentLimitMb.value * 1024 * 1024;
   if (file.size > limitBytes) {
-    showToast(`文件 ${file.name}（${formatSize(file.size)}）超过当前邮箱附件限制（${attachmentLimitMb.value}MB）`, 'error');
-    return;
+  showToast(`文件 ${file.name}（${formatSize(file.size)}）超过当前邮箱附件限制（${attachmentLimitMb.value}MB）`, 'error');
+  return;
   }
   const formData = new FormData();
   formData.append('file', file);
   try {
-    const data = await api.post('/messages/upload-attachment', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    }) as any;
-    attachments.value.push({
-      filename: data.filename,
-      size: data.size,
-      path: data.path,
-    });
+  const data = await api.post('/messages/upload-attachment', formData, {
+  headers: { 'Content-Type': 'multipart/form-data' },
+  }) as any;
+  attachments.value.push({
+  filename: data.filename,
+  size: data.size,
+  path: data.path,
+  });
   } catch (e: any) {
-    // 优先显示后端返回的友好错误信息
-    const msg = e?.response?.data?.detail || e?.message || '上传失败';
-    showToast(`${file.name}: ${msg}`, 'error');
+  // 优先显示后端返回的友好错误信息
+  const msg = e?.response?.data?.detail || e?.message || '上传失败';
+  showToast(`${file.name}: ${msg}`, 'error');
   }
 }
 
 async function removeAttachment(index: number) {
   const att = attachments.value[index];
   try {
-    await api.delete('/messages/upload-attachment', { params: { path: att.path } });
+  await api.delete('/messages/upload-attachment', { params: { path: att.path } });
   } catch {
-    // 删除失败也从前端移除
+  // 删除失败也从前端移除
   }
   attachments.value.splice(index, 1);
 }
@@ -1159,6 +1259,33 @@ function formatSize(bytes: number): string {
   color: var(--text-primary);
   font-size: 14px;
   padding: 2px 0;
+}
+
+/* 手机端收件人确认按钮：输入中显示，点按即可落标签（不依赖软键盘回车） */
+.recipient-confirm-btn {
+  flex-shrink: 0;
+  margin-left: 2px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent-blue, #007AFF);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.2;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.recipient-confirm-btn:active {
+  opacity: 0.85;
+}
+
+/* 桌面宽屏：确认按钮隐藏，保持原有回车确认习惯 */
+@media (min-width: 769px) and (pointer: fine) {
+  .recipient-confirm-btn {
+    display: none;
+  }
 }
 
 .text-btn {
@@ -1583,39 +1710,39 @@ function formatSize(bytes: number): string {
 /* 移动端适配 */
 @media (max-width: 768px) {
   .compose-toolbar {
-    padding: 8px 12px;
-    gap: 4px;
+  padding: 8px 12px;
+  gap: 4px;
   }
 
   .toolbar-btn span {
-    display: none;
+  display: none;
   }
 
   .toolbar-btn {
-    padding: 8px;
+  padding: 8px;
   }
 
   .compose-form {
-    padding: 0 12px 12px;
+  padding: 0 12px 12px;
   }
 
   .form-row label {
-    width: 48px;
-    font-size: 12px;
+  width: 48px;
+  font-size: 12px;
   }
 
   .modal-content {
-    width: 90vw;
-    padding: 16px;
+  width: 90vw;
+  padding: 16px;
   }
 
   .schedule-modal {
-    width: 90vw;
+  width: 90vw;
   }
 
   .sc-select {
-    font-size: 13px;
-    padding: 4px 16px 4px 6px;
+  font-size: 13px;
+  padding: 4px 16px 4px 6px;
   }
 }
 
@@ -1843,23 +1970,23 @@ function formatSize(bytes: number): string {
 @media (max-width: 768px) {
   /* 签名面板：底部抽屉，position:fixed 绕过祖先 overflow:hidden 裁剪 */
   .sig-panel {
-    position: fixed !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
-    top: auto !important;
-    width: 100% !important;
-    max-height: 70vh !important;
-    margin-top: 0 !important;
-    border-radius: 12px 12px 0 0 !important;
-    z-index: 1000 !important;
-    padding: 12px 16px 20px !important;
-    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15) !important;
+  position: fixed !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  top: auto !important;
+  width: 100% !important;
+  max-height: 70vh !important;
+  margin-top: 0 !important;
+  border-radius: 12px 12px 0 0 !important;
+  z-index: 1000 !important;
+  padding: 12px 16px 20px !important;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15) !important;
   }
 
   /* 签名编辑对话框：手机端铺满 */
   .sig-customize-modal {
-    width: 90vw !important;
+  width: 90vw !important;
   }
 }
 
@@ -1912,10 +2039,10 @@ function formatSize(bytes: number): string {
 /* 移动端：建议下拉铺满 */
 @media (max-width: 768px) {
   .suggest-dropdown {
-    position: fixed;
-    left: 12px;
-    right: 12px;
-    max-height: 200px;
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  max-height: 200px;
   }
 }
 </style>

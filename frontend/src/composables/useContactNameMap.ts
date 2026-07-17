@@ -19,20 +19,20 @@ async function loadMap(): Promise<void> {
   if (loaded.value || loading.value) return
   loading.value = true
   try {
-    const data = await api.get('/contacts') as any
-    const map = new Map<string, string>()
-    for (const contact of (data.contacts || [])) {
-      const name = contact.name?.trim()
-      if (!name) continue
-      for (const emailObj of (contact.emails || [])) {
-        const email = emailObj.email?.toLowerCase().trim()
-        if (email) map.set(email, name)
-      }
-    }
-    emailNameMap.value = map
-    loaded.value = true
+  const data = await api.get('/contacts') as any
+  const map = new Map<string, string>()
+  for (const contact of (data.contacts || [])) {
+  const name = contact.name?.trim()
+  if (!name) continue
+  for (const emailObj of (contact.emails || [])) {
+  const email = emailObj.email?.toLowerCase().trim()
+  if (email) map.set(email, name)
+  }
+  }
+  emailNameMap.value = map
+  loaded.value = true
   } finally {
-    loading.value = false
+  loading.value = false
   }
 }
 
@@ -52,8 +52,8 @@ function displayName(fromAddr: string): string {
   // 先从地址中提取邮箱，查映射表
   const emails = extractEmails(fromAddr)
   for (const email of emails) {
-    const name = emailNameMap.value.get(email.toLowerCase())
-    if (name) return name
+  const name = emailNameMap.value.get(email.toLowerCase())
+  if (name) return name
   }
   // 未命中联系人，走原始 extractName 逻辑
   return extractName(fromAddr)
@@ -61,9 +61,9 @@ function displayName(fromAddr: string): string {
 
 export function useContactNameMap() {
   return {
-    displayName,
-    loadMap,
-    reloadMap,
-    loading,
+  displayName,
+  loadMap,
+  reloadMap,
+  loading,
   }
 }

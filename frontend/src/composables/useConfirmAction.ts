@@ -9,32 +9,32 @@ export function useConfirmAction(timeout = 3000) {
 
   /** 请求确认，返回 true 表示已确认可执行操作，false 表示需要再次确认 */
   function requestConfirm(id: string): boolean {
-    // 同一目标第二次点击 → 确认执行
-    if (confirmTarget.value === id) {
-      clearConfirm()
-      return true
-    }
-    // 第一次点击，进入确认状态
-    confirmTarget.value = id
-    if (confirmTimer.value) clearTimeout(confirmTimer.value)
-    confirmTimer.value = setTimeout(() => {
-      confirmTarget.value = null
-    }, timeout)
-    return false
+  // 同一目标第二次点击 → 确认执行
+  if (confirmTarget.value === id) {
+  clearConfirm()
+  return true
+  }
+  // 第一次点击，进入确认状态
+  confirmTarget.value = id
+  if (confirmTimer.value) clearTimeout(confirmTimer.value)
+  confirmTimer.value = setTimeout(() => {
+  confirmTarget.value = null
+  }, timeout)
+  return false
   }
 
   /** 清除确认状态 */
   function clearConfirm() {
-    confirmTarget.value = null
-    if (confirmTimer.value) {
-      clearTimeout(confirmTimer.value)
-      confirmTimer.value = null
-    }
+  confirmTarget.value = null
+  if (confirmTimer.value) {
+  clearTimeout(confirmTimer.value)
+  confirmTimer.value = null
+  }
   }
 
   return {
-    confirmTarget,
-    requestConfirm,
-    clearConfirm,
+  confirmTarget,
+  requestConfirm,
+  clearConfirm,
   }
 }

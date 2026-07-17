@@ -1,70 +1,70 @@
 <template>
   <div class="about-page">
-    <!-- 品牌 + 简介 -->
-    <div class="about-card">
-      <div class="brand-row">
-        <img :src="base + 'icon-full.png'" alt="FlyMail" class="brand-logo" @error="onLogoError" />
-        <div class="brand-meta">
-          <div class="brand-name-line">
-            <span class="brand-name">Fly<span class="accent">Mail</span></span>
-            <span class="ver">v{{ version }}</span>
-          </div>
-          <p class="brand-slogan">专为多邮箱用户打造的自托管邮件客户端</p>
-        </div>
-        <!-- 检测更新按钮：点击后从 GitHub 拉取最新 VERSION 比对 -->
-        <button
-          class="check-update-btn"
-          :disabled="checking"
-          @click="checkUpdate"
-          :title="checking ? '正在检测...' : '检测是否有新版本'"
-        >
-          <svg v-if="!checking" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 12a9 9 0 11-6.219-8.56"/><polyline points="21 4 21 10 15 10"/>
-          </svg>
-          <svg v-else class="spin-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 12a9 9 0 11-6.219-8.56"/>
-          </svg>
-          <span>{{ checking ? '检测中' : '检测更新' }}</span>
-        </button>
-      </div>
-      <p class="brand-desc">
-        统一管理 Gmail、Outlook、QQ 邮箱、网易邮箱、iCloud、新浪邮箱等主流平台的邮件数据。
-        聚合收件箱让您在一个界面查看所有邮箱的重要邮件，告别频繁切换账号的烦恼。
-        支持多账号管理、邮件收发、富文本编辑、附件上传下载、定时发送、草稿箱、个性签名、本地备份及实时同步等丰富功能，满足日常办公与个人使用需求。
-      </p>
-    </div>
+  <!-- 品牌 + 简介 -->
+  <div class="about-card">
+  <div class="brand-row">
+  <img :src="base + 'icon-full.png'" alt="FlyMail" class="brand-logo" @error="onLogoError" />
+  <div class="brand-meta">
+  <div class="brand-name-line">
+  <span class="brand-name">Fly<span class="accent">Mail</span></span>
+  <span class="ver">v{{ version }}</span>
+  </div>
+  <p class="brand-slogan">专为多邮箱用户打造的自托管邮件客户端</p>
+  </div>
+  <!-- 检测更新按钮：点击后从 GitHub 拉取最新 VERSION 比对 -->
+  <button
+  class="check-update-btn"
+  :disabled="checking"
+  @click="checkUpdate"
+  :title="checking ? '正在检测...' : '检测是否有新版本'"
+  >
+  <svg v-if="!checking" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M21 12a9 9 0 11-6.219-8.56"/><polyline points="21 4 21 10 15 10"/>
+  </svg>
+  <svg v-else class="spin-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M21 12a9 9 0 11-6.219-8.56"/>
+  </svg>
+  <span>{{ checking ? '检测中' : '检测更新' }}</span>
+  </button>
+  </div>
+  <p class="brand-desc">
+  统一管理 Gmail、Outlook、QQ 邮箱、网易邮箱、iCloud、新浪邮箱等主流平台的邮件数据。
+  聚合收件箱让您在一个界面查看所有邮箱的重要邮件，告别频繁切换账号的烦恼。
+  支持多账号管理、邮件收发、富文本编辑、附件上传下载、定时发送、草稿箱、个性签名、本地备份及实时同步等丰富功能，满足日常办公与个人使用需求。
+  </p>
+  </div>
 
-    <!-- 功能 + 技术栈 -->
-    <div class="about-card">
-      <div class="pill-row">
-        <span class="pill" v-for="f in features" :key="f">
-          <span class="pill-dot"></span>{{ f }}
-        </span>
-      </div>
-      <div class="divider"></div>
-      <div class="pill-row">
-        <span class="pill tech" v-for="t in techs" :key="t">{{ t }}</span>
-      </div>
-    </div>
+  <!-- 功能 + 技术栈 -->
+  <div class="about-card">
+  <div class="pill-row">
+  <span class="pill" v-for="f in features" :key="f">
+  <span class="pill-dot"></span>{{ f }}
+  </span>
+  </div>
+  <div class="divider"></div>
+  <div class="pill-row">
+  <span class="pill tech" v-for="t in techs" :key="t">{{ t }}</span>
+  </div>
+  </div>
 
-    <!-- 支持与反馈 -->
-    <div class="about-card">
-      <div class="qr-row">
-        <div class="qr-item">
-          <img :src="base + 'afdian.jpg'" alt="爱发电" class="qr-img" />
-          <span class="qr-label">爱发电</span>
-        </div>
-        <div class="qr-item">
-          <img :src="base + 'feedback.jpg'" alt="意见反馈" class="qr-img" />
-          <span class="qr-label">意见反馈</span>
-        </div>
-      </div>
-    </div>
+  <!-- 支持与反馈 -->
+  <div class="about-card">
+  <div class="qr-row">
+  <div class="qr-item">
+  <img :src="base + 'afdian.jpg'" alt="爱发电" class="qr-img" />
+  <span class="qr-label">爱发电</span>
+  </div>
+  <div class="qr-item">
+  <img :src="base + 'feedback.jpg'" alt="意见反馈" class="qr-img" />
+  <span class="qr-label">意见反馈</span>
+  </div>
+  </div>
+  </div>
 
-    <!-- 底部 -->
-    <div class="footer">
-      <span>© 2026 cliii-one · GNU GPLv3</span>
-    </div>
+  <!-- 底部 -->
+  <div class="footer">
+  <span>© 2026 cliii-one · GNU GPLv3</span>
+  </div>
   </div>
 </template>
 
@@ -99,10 +99,10 @@ function compareVersions(v1: string, v2: string): number {
   const parts2 = v2.split('.').map(Number);
   const maxLen = Math.max(parts1.length, parts2.length);
   for (let i = 0; i < maxLen; i++) {
-    const a = parts1[i] || 0;
-    const b = parts2[i] || 0;
-    if (a > b) return 1;
-    if (a < b) return -1;
+  const a = parts1[i] || 0;
+  const b = parts2[i] || 0;
+  if (a > b) return 1;
+  if (a < b) return -1;
   }
   return 0;
 }
@@ -117,23 +117,23 @@ async function checkUpdate() {
   if (checking.value) return;
   checking.value = true;
   try {
-    const res = await fetch(GITHUB_VERSION_URL, { cache: 'no-store' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const latestVersion = (await res.text()).trim();
-    if (!latestVersion) throw new Error('版本号为空');
+  const res = await fetch(GITHUB_VERSION_URL, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const latestVersion = (await res.text()).trim();
+  if (!latestVersion) throw new Error('版本号为空');
 
-    const result = compareVersions(version, latestVersion);
-    if (result < 0) {
-      // 当前版本低于 GitHub 版本，提示可更新
-      uiStore.success(`发现新版本 v${latestVersion}，请前往 GitHub 下载`);
-    } else {
-      // 版本一致或当前更高
-      uiStore.success(`当前已是最新版本（v${version}）`);
-    }
+  const result = compareVersions(version, latestVersion);
+  if (result < 0) {
+  // 当前版本低于 GitHub 版本，提示可更新
+  uiStore.success(`发现新版本 v${latestVersion}，请前往 GitHub 下载`);
+  } else {
+  // 版本一致或当前更高
+  uiStore.success(`当前已是最新版本（v${version}）`);
+  }
   } catch (e: any) {
-    uiStore.error('检测更新失败，请检查网络连接');
+  uiStore.error('检测更新失败，请检查网络连接');
   } finally {
-    checking.value = false;
+  checking.value = false;
   }
 }
 </script>
@@ -327,34 +327,34 @@ async function checkUpdate() {
 /* 移动端 */
 @media (max-width: 768px) {
   .about-page {
-    padding: var(--space-4);
+  padding: var(--space-4);
   }
 
   .about-card {
-    padding: var(--space-4);
+  padding: var(--space-4);
   }
 
   .brand-logo {
-    width: 40px;
-    height: 40px;
-    border-radius: 10px;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
   }
 
   .brand-name {
-    font-size: 17px;
+  font-size: 17px;
   }
 
   /* 移动端按钮只显示图标，节省空间 */
   .check-update-btn span {
-    display: none;
+  display: none;
   }
   .check-update-btn {
-    padding: 6px 8px;
+  padding: 6px 8px;
   }
 
   .qr-img {
-    width: 96px;
-    height: 96px;
+  width: 96px;
+  height: 96px;
   }
 }
 </style>

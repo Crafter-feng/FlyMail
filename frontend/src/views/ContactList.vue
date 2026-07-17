@@ -1,270 +1,270 @@
 <template>
   <div class="contact-page">
-    <!-- ============ 左侧：联系人列表 ============ -->
-    <aside class="contact-sidebar" :class="{ 'mobile-hidden': selectedId && isMobile }">
-      <!-- 顶部操作栏 -->
-      <div class="sidebar-header">
-        <div class="search-box">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-          </svg>
-          <input v-model="searchKeyword" placeholder="搜索姓名或邮箱" class="search-input" />
-        </div>
-        <button class="btn-add" @click="openAddDialog()">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-          新增
-        </button>
-      </div>
+  <!-- ============ 左侧：联系人列表 ============ -->
+  <aside class="contact-sidebar" :class="{ 'mobile-hidden': selectedId && isMobile }">
+  <!-- 顶部操作栏 -->
+  <div class="sidebar-header">
+  <div class="search-box">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+  </svg>
+  <input v-model="searchKeyword" placeholder="搜索姓名或邮箱" class="search-input" />
+  </div>
+  <button class="btn-add" @click="openAddDialog()">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+  </svg>
+  新增
+  </button>
+  </div>
 
-      <!-- 加载状态 -->
-      <div v-if="loading" class="state-box">
-        <div class="spinner"></div>
-        <span>加载中...</span>
-      </div>
+  <!-- 加载状态 -->
+  <div v-if="loading" class="state-box">
+  <div class="spinner"></div>
+  <span>加载中...</span>
+  </div>
 
-      <!-- 空状态 -->
-      <div v-else-if="filteredContacts.length === 0" class="state-box empty">
-        <div class="empty-icon">
-          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
-            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
-            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-          </svg>
-        </div>
-        <p class="state-title">{{ searchKeyword ? '未找到匹配的联系人' : '还没有联系人' }}</p>
-        <p class="state-desc">{{ searchKeyword ? '试试其他关键词' : '点击「新增」按钮添加联系人' }}</p>
-      </div>
+  <!-- 空状态 -->
+  <div v-else-if="filteredContacts.length === 0" class="state-box empty">
+  <div class="empty-icon">
+  <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+  <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+  </svg>
+  </div>
+  <p class="state-title">{{ searchKeyword ? '未找到匹配的联系人' : '还没有联系人' }}</p>
+  <p class="state-desc">{{ searchKeyword ? '试试其他关键词' : '点击「新增」按钮添加联系人' }}</p>
+  </div>
 
-      <!-- 联系人列表 -->
-      <div v-else class="contact-list">
-        <div
-          v-for="contact in filteredContacts"
-          :key="contact.id"
-          class="contact-item"
-          :class="{ active: contact.id === selectedId }"
-          @click="selectContact(contact.id)"
-        >
-          <div class="avatar-sm" :style="{ background: getAvatarColor(contact.name || primaryEmail(contact)) }">
-            {{ avatarLetter(contact) }}
-          </div>
-          <div class="item-info">
-            <div class="item-name">{{ contact.name || '(未命名)' }}</div>
-            <div class="item-email">{{ primaryEmail(contact) }}</div>
-          </div>
-          <span v-if="contact.emails.length > 1" class="email-count" :title="`共 ${contact.emails.length} 个邮箱`">
-            {{ contact.emails.length }}
-          </span>
-        </div>
-      </div>
-    </aside>
+  <!-- 联系人列表 -->
+  <div v-else class="contact-list">
+  <div
+  v-for="contact in filteredContacts"
+  :key="contact.id"
+  class="contact-item"
+  :class="{ active: contact.id === selectedId }"
+  @click="selectContact(contact.id)"
+  >
+  <div class="avatar-sm" :style="{ background: getAvatarColor(contact.name || primaryEmail(contact)) }">
+  {{ avatarLetter(contact) }}
+  </div>
+  <div class="item-info">
+  <div class="item-name">{{ contact.name || '(未命名)' }}</div>
+  <div class="item-email">{{ primaryEmail(contact) }}</div>
+  </div>
+  <span v-if="contact.emails.length > 1" class="email-count" :title="`共 ${contact.emails.length} 个邮箱`">
+  {{ contact.emails.length }}
+  </span>
+  </div>
+  </div>
+  </aside>
 
-    <!-- ============ 右侧：联系人详情面板 ============ -->
-    <section class="contact-detail" :class="{ 'mobile-show': selectedId && isMobile }">
-      <!-- 未选择联系人 -->
-      <div v-if="!selectedContact" class="detail-empty">
-        <div class="detail-empty-icon">
-          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
-          </svg>
-        </div>
-        <p class="detail-empty-text">选择左侧联系人查看详情</p>
-        <p class="detail-empty-hint">或点击「新增」添加新联系人</p>
-      </div>
+  <!-- ============ 右侧：联系人详情面板 ============ -->
+  <section class="contact-detail" :class="{ 'mobile-show': selectedId && isMobile }">
+  <!-- 未选择联系人 -->
+  <div v-if="!selectedContact" class="detail-empty">
+  <div class="detail-empty-icon">
+  <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+  </svg>
+  </div>
+  <p class="detail-empty-text">选择左侧联系人查看详情</p>
+  <p class="detail-empty-hint">或点击「新增」添加新联系人</p>
+  </div>
 
-      <!-- 联系人详情 -->
-      <div v-else class="detail-content">
-        <!-- 手机端返回按钮（仅移动端显示） -->
-        <button class="btn-back-mobile" @click="selectedId = null">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="15 18 9 12 15 6"/>
-          </svg>
-          返回
-        </button>
-        <!-- 头部：渐变背景 + 头像 + 姓名 + 操作按钮 -->
-        <div class="detail-header">
-          <div class="header-banner" :style="{ background: `linear-gradient(135deg, ${getAvatarColor(selectedContact.name || primaryEmail(selectedContact))}22, transparent)` }"></div>
-          <div class="header-inner">
-            <div class="avatar-lg" :style="{ background: getAvatarColor(selectedContact.name || primaryEmail(selectedContact)) }">
-              {{ avatarLetter(selectedContact) }}
-            </div>
-            <div class="header-info">
-              <h2 class="detail-name">
-                {{ selectedContact.name || '(未命名)' }}
-                <button class="btn-icon-edit" @click="openEditDialog(selectedContact)" title="编辑联系人">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
-                  </svg>
-                </button>
-              </h2>
-              <div class="detail-meta">
-                <span v-if="selectedContact.company" class="meta-tag meta-company">{{ selectedContact.company }}</span>
-                <span v-if="selectedContact.group_name" class="meta-tag">{{ selectedContact.group_name }}</span>
-                <span class="meta-email-count">{{ selectedContact.emails.length }} 个邮箱</span>
-              </div>
-            </div>
-            <div class="header-actions">
-              <button class="btn-action btn-delete" @click="handleDelete(selectedContact)" title="删除联系人">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                </svg>
-                <span class="btn-text">删除</span>
-              </button>
-            </div>
-          </div>
-        </div>
+  <!-- 联系人详情 -->
+  <div v-else class="detail-content">
+  <!-- 手机端返回按钮（仅移动端显示） -->
+  <button class="btn-back-mobile" @click="selectedId = null">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="15 18 9 12 15 6"/>
+  </svg>
+  返回
+  </button>
+  <!-- 头部：渐变背景 + 头像 + 姓名 + 操作按钮 -->
+  <div class="detail-header">
+  <div class="header-banner" :style="{ background: `linear-gradient(135deg, ${getAvatarColor(selectedContact.name || primaryEmail(selectedContact))}22, transparent)` }"></div>
+  <div class="header-inner">
+  <div class="avatar-lg" :style="{ background: getAvatarColor(selectedContact.name || primaryEmail(selectedContact)) }">
+  {{ avatarLetter(selectedContact) }}
+  </div>
+  <div class="header-info">
+  <h2 class="detail-name">
+  {{ selectedContact.name || '(未命名)' }}
+  <button class="btn-icon-edit" @click="openEditDialog(selectedContact)" title="编辑联系人">
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+  </svg>
+  </button>
+  </h2>
+  <div class="detail-meta">
+  <span v-if="selectedContact.company" class="meta-tag meta-company">{{ selectedContact.company }}</span>
+  <span v-if="selectedContact.group_name" class="meta-tag">{{ selectedContact.group_name }}</span>
+  <span class="meta-email-count">{{ selectedContact.emails.length }} 个邮箱</span>
+  </div>
+  </div>
+  <div class="header-actions">
+  <button class="btn-action btn-delete" @click="handleDelete(selectedContact)" title="删除联系人">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+  </svg>
+  <span class="btn-text">删除</span>
+  </button>
+  </div>
+  </div>
+  </div>
 
-        <!-- 详情卡片区域：双列布局更饱满 -->
-        <div class="detail-sections">
-          <div class="sections-row">
-            <!-- 邮箱列表（左列，较宽） -->
-            <div class="detail-section">
-              <div class="section-title">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
-                </svg>
-                邮箱地址
-              </div>
-              <div class="email-list">
-                <div v-for="emailObj in selectedContact.emails" :key="emailObj.id" class="email-row">
-                  <span class="email-text">{{ emailObj.email }}</span>
-                  <span v-if="emailObj.is_primary" class="badge-primary">主</span>
-                </div>
-              </div>
-            </div>
+  <!-- 详情卡片区域：双列布局更饱满 -->
+  <div class="detail-sections">
+  <div class="sections-row">
+  <!-- 邮箱列表（左列，较宽） -->
+  <div class="detail-section">
+  <div class="section-title">
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
+  </svg>
+  邮箱地址
+  </div>
+  <div class="email-list">
+  <div v-for="emailObj in selectedContact.emails" :key="emailObj.id" class="email-row">
+  <span class="email-text">{{ emailObj.email }}</span>
+  <span v-if="emailObj.is_primary" class="badge-primary">主</span>
+  </div>
+  </div>
+  </div>
 
-            <!-- 联系方式（右列） -->
-            <div class="detail-section">
-              <div class="section-title">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
-                </svg>
-                联系方式
-              </div>
-              <div class="info-list">
-                <div class="info-item">
-                  <span class="info-label">电话</span>
-                  <span class="info-value">{{ selectedContact.phone || '—' }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="info-label">工作单位</span>
-                  <span class="info-value">{{ selectedContact.company || '—' }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="info-label">分组</span>
-                  <span class="info-value">{{ selectedContact.group_name || '—' }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
+  <!-- 联系方式（右列） -->
+  <div class="detail-section">
+  <div class="section-title">
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+  </svg>
+  联系方式
+  </div>
+  <div class="info-list">
+  <div class="info-item">
+  <span class="info-label">电话</span>
+  <span class="info-value">{{ selectedContact.phone || '—' }}</span>
+  </div>
+  <div class="info-item">
+  <span class="info-label">工作单位</span>
+  <span class="info-value">{{ selectedContact.company || '—' }}</span>
+  </div>
+  <div class="info-item">
+  <span class="info-label">分组</span>
+  <span class="info-value">{{ selectedContact.group_name || '—' }}</span>
+  </div>
+  </div>
+  </div>
+  </div>
 
-          <!-- 往来邮件统计（全宽） -->
-          <div class="detail-section">
-            <div class="section-title">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/>
-              </svg>
-              往来邮件
-            </div>
-            <div class="stats-grid">
-              <!-- 统计加载中 -->
-              <div v-if="statsLoading" class="stats-loading">
-                <div class="spinner-sm"></div>
-                <span>统计中...</span>
-              </div>
-              <template v-else>
-                <div class="stats-card">
-                  <div class="stats-value">{{ statsData.count }}</div>
-                  <div class="stats-label">往来邮件总数</div>
-                </div>
-                <div class="stats-card">
-                  <div class="stats-value">{{ statsData.last_date ? formatRelativeDate(statsData.last_date) : '—' }}</div>
-                  <div class="stats-label">最近一次联系</div>
-                </div>
-              </template>
-            </div>
-          </div>
+  <!-- 往来邮件统计（全宽） -->
+  <div class="detail-section">
+  <div class="section-title">
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/>
+  </svg>
+  往来邮件
+  </div>
+  <div class="stats-grid">
+  <!-- 统计加载中 -->
+  <div v-if="statsLoading" class="stats-loading">
+  <div class="spinner-sm"></div>
+  <span>统计中...</span>
+  </div>
+  <template v-else>
+  <div class="stats-card">
+  <div class="stats-value">{{ statsData.count }}</div>
+  <div class="stats-label">往来邮件总数</div>
+  </div>
+  <div class="stats-card">
+  <div class="stats-value">{{ statsData.last_date ? formatRelativeDate(statsData.last_date) : '—' }}</div>
+  <div class="stats-label">最近一次联系</div>
+  </div>
+  </template>
+  </div>
+  </div>
 
-          <!-- 备注（全宽） -->
-          <div v-if="selectedContact.remark" class="detail-section">
-            <div class="section-title">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
-              </svg>
-              备注
-            </div>
-            <div class="remark-box">{{ selectedContact.remark }}</div>
-          </div>
-        </div>
-      </div>
-    </section>
+  <!-- 备注（全宽） -->
+  <div v-if="selectedContact.remark" class="detail-section">
+  <div class="section-title">
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+  </svg>
+  备注
+  </div>
+  <div class="remark-box">{{ selectedContact.remark }}</div>
+  </div>
+  </div>
+  </div>
+  </section>
 
-    <!-- ============ 新增/编辑弹窗 ============ -->
-    <transition name="fade">
-      <div v-if="showDialog" class="dialog-backdrop" @click.self="closeDialog">
-        <div class="dialog">
-          <h3 class="dialog-title">{{ editingContact ? '编辑联系人' : '新增联系人' }}</h3>
-          <div class="dialog-body">
-            <!-- 姓名 -->
-            <div class="form-row">
-              <label>姓名</label>
-              <input v-model="formData.name" placeholder="联系人姓名（允许同名）" class="form-input" />
-            </div>
-            <!-- 多邮箱输入 -->
-            <div class="form-row">
-              <label>邮箱 *</label>
-              <div class="email-input-list">
-                <div v-for="(emailItem, idx) in formData.emails" :key="idx" class="email-input-row">
-                  <input
-                    v-model="emailItem.value"
-                    placeholder="邮箱地址"
-                    class="form-input"
-                    :class="{ error: emailErrors[idx] }"
-                    @input="emailErrors[idx] = ''"
-                  />
-                  <button v-if="formData.emails.length > 1" class="btn-remove-email" @click="removeEmailField(idx)" title="移除">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                    </svg>
-                  </button>
-                  <span v-if="emailErrors[idx]" class="form-error">{{ emailErrors[idx] }}</span>
-                </div>
-              </div>
-              <button class="btn-add-email" @click="addEmailField">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-                </svg>
-                添加邮箱
-              </button>
-            </div>
-            <!-- 电话 -->
-            <div class="form-row">
-              <label>电话</label>
-              <input v-model="formData.phone" placeholder="联系电话（选填）" class="form-input" />
-            </div>
-            <!-- 工作单位 -->
-            <div class="form-row">
-              <label>工作单位</label>
-              <input v-model="formData.company" placeholder="工作单位（选填）" class="form-input" />
-            </div>
-            <!-- 分组 -->
-            <div class="form-row">
-              <label>分组</label>
-              <input v-model="formData.group_name" placeholder="分组名（选填）" class="form-input" />
-            </div>
-            <!-- 备注 -->
-            <div class="form-row">
-              <label>备注</label>
-              <textarea v-model="formData.remark" placeholder="备注信息（选填）" class="form-textarea" rows="3"></textarea>
-            </div>
-          </div>
-          <div class="dialog-footer">
-            <button class="btn btn-cancel" @click="closeDialog">取消</button>
-            <button class="btn btn-save" @click="handleSave" :disabled="saving">{{ saving ? '保存中...' : '保存' }}</button>
-          </div>
-        </div>
-      </div>
-    </transition>
+  <!-- ============ 新增/编辑弹窗 ============ -->
+  <transition name="fade">
+  <div v-if="showDialog" class="dialog-backdrop" @click.self="closeDialog">
+  <div class="dialog">
+  <h3 class="dialog-title">{{ editingContact ? '编辑联系人' : '新增联系人' }}</h3>
+  <div class="dialog-body">
+  <!-- 姓名 -->
+  <div class="form-row">
+  <label>姓名</label>
+  <input v-model="formData.name" placeholder="联系人姓名（允许同名）" class="form-input" />
+  </div>
+  <!-- 多邮箱输入 -->
+  <div class="form-row">
+  <label>邮箱 *</label>
+  <div class="email-input-list">
+  <div v-for="(emailItem, idx) in formData.emails" :key="idx" class="email-input-row">
+  <input
+  v-model="emailItem.value"
+  placeholder="邮箱地址"
+  class="form-input"
+  :class="{ error: emailErrors[idx] }"
+  @input="emailErrors[idx] = ''"
+  />
+  <button v-if="formData.emails.length > 1" class="btn-remove-email" @click="removeEmailField(idx)" title="移除">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+  </svg>
+  </button>
+  <span v-if="emailErrors[idx]" class="form-error">{{ emailErrors[idx] }}</span>
+  </div>
+  </div>
+  <button class="btn-add-email" @click="addEmailField">
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+  </svg>
+  添加邮箱
+  </button>
+  </div>
+  <!-- 电话 -->
+  <div class="form-row">
+  <label>电话</label>
+  <input v-model="formData.phone" placeholder="联系电话（选填）" class="form-input" />
+  </div>
+  <!-- 工作单位 -->
+  <div class="form-row">
+  <label>工作单位</label>
+  <input v-model="formData.company" placeholder="工作单位（选填）" class="form-input" />
+  </div>
+  <!-- 分组 -->
+  <div class="form-row">
+  <label>分组</label>
+  <input v-model="formData.group_name" placeholder="分组名（选填）" class="form-input" />
+  </div>
+  <!-- 备注 -->
+  <div class="form-row">
+  <label>备注</label>
+  <textarea v-model="formData.remark" placeholder="备注信息（选填）" class="form-textarea" rows="3"></textarea>
+  </div>
+  </div>
+  <div class="dialog-footer">
+  <button class="btn btn-cancel" @click="closeDialog">取消</button>
+  <button class="btn btn-save" @click="handleSave" :disabled="saving">{{ saving ? '保存中...' : '保存' }}</button>
+  </div>
+  </div>
+  </div>
+  </transition>
   </div>
 </template>
 
@@ -306,9 +306,9 @@ const filteredContacts = computed(() => {
   const kw = searchKeyword.value.trim().toLowerCase();
   if (!kw) return contacts.value;
   return contacts.value.filter(c => {
-    const nameMatch = c.name.toLowerCase().includes(kw);
-    const emailMatch = c.emails.some(e => e.email.toLowerCase().includes(kw));
-    return nameMatch || emailMatch;
+  const nameMatch = c.name.toLowerCase().includes(kw);
+  const emailMatch = c.emails.some(e => e.email.toLowerCase().includes(kw));
+  return nameMatch || emailMatch;
   });
 });
 
@@ -355,18 +355,18 @@ function selectContact(id: number) {
 /** 监听选中联系人变化，加载往来邮件统计 */
 watch(selectedContact, async () => {
   if (!selectedContact.value) {
-    statsData.value = { count: 0, last_date: '' };
-    return;
+  statsData.value = { count: 0, last_date: '' };
+  return;
   }
   const email = primaryEmail(selectedContact.value);
   if (!email) return;
   statsLoading.value = true;
   try {
-    statsData.value = await getContactStats(selectedContact.value.id, email);
+  statsData.value = await getContactStats(selectedContact.value.id, email);
   } catch {
-    statsData.value = { count: 0, last_date: '' };
+  statsData.value = { count: 0, last_date: '' };
   } finally {
-    statsLoading.value = false;
+  statsLoading.value = false;
   }
 });
 
@@ -375,12 +375,12 @@ watch(selectedContact, async () => {
 function openAddDialog() {
   editingContact.value = null;
   formData.value = {
-    name: '',
-    emails: [{ value: '' }],
-    phone: '',
-    company: '',
-    remark: '',
-    group_name: '',
+  name: '',
+  emails: [{ value: '' }],
+  phone: '',
+  company: '',
+  remark: '',
+  group_name: '',
   };
   emailErrors.value = [];
   showDialog.value = true;
@@ -391,15 +391,15 @@ function openEditDialog(contact: ContactItem) {
   editingContact.value = contact;
   // 将 emails 数组转为可编辑的输入项
   const emailItems = contact.emails.length > 0
-    ? contact.emails.map(e => ({ value: e.email }))
-    : [{ value: '' }];
+  ? contact.emails.map(e => ({ value: e.email }))
+  : [{ value: '' }];
   formData.value = {
-    name: contact.name,
-    emails: emailItems,
-    phone: contact.phone,
-    company: contact.company,
-    remark: contact.remark,
-    group_name: contact.group_name,
+  name: contact.name,
+  emails: emailItems,
+  phone: contact.phone,
+  company: contact.company,
+  remark: contact.remark,
+  group_name: contact.group_name,
   };
   emailErrors.value = [];
   showDialog.value = true;
@@ -433,49 +433,49 @@ async function handleSave() {
   // 收集并校验邮箱
   const emails = formData.value.emails.map(e => e.value.trim()).filter(e => e);
   emailErrors.value = formData.value.emails.map(e => {
-    const val = e.value.trim();
-    if (!val) return '';
-    return validateEmail(val) ? '' : '邮箱格式不正确';
+  const val = e.value.trim();
+  if (!val) return '';
+  return validateEmail(val) ? '' : '邮箱格式不正确';
   });
 
   if (emails.length === 0) {
-    ui.error('至少需要填写一个邮箱');
-    return;
+  ui.error('至少需要填写一个邮箱');
+  return;
   }
   if (emailErrors.value.some(e => e)) {
-    return;
+  return;
   }
   // 检查邮箱是否重复
   const uniqueEmails = new Set(emails);
   if (uniqueEmails.size !== emails.length) {
-    ui.error('存在重复的邮箱地址');
-    return;
+  ui.error('存在重复的邮箱地址');
+  return;
   }
 
   saving.value = true;
   try {
-    const data = {
-      name: formData.value.name.trim(),
-      emails,
-      phone: formData.value.phone.trim(),
-      company: formData.value.company.trim(),
-      remark: formData.value.remark.trim(),
-      group_name: formData.value.group_name.trim(),
-    };
-    if (editingContact.value) {
-      await editContact(editingContact.value.id, data);
-      ui.success('联系人已更新');
-    } else {
-      await addContact(data);
-      ui.success('联系人已添加');
-    }
-    showDialog.value = false;
-    await loadContacts();
+  const data = {
+  name: formData.value.name.trim(),
+  emails,
+  phone: formData.value.phone.trim(),
+  company: formData.value.company.trim(),
+  remark: formData.value.remark.trim(),
+  group_name: formData.value.group_name.trim(),
+  };
+  if (editingContact.value) {
+  await editContact(editingContact.value.id, data);
+  ui.success('联系人已更新');
+  } else {
+  await addContact(data);
+  ui.success('联系人已添加');
+  }
+  showDialog.value = false;
+  await loadContacts();
   } catch (e: any) {
-    const msg = e?.response?.data?.error || e?.message || '';
-    ui.error(msg || '保存失败');
+  const msg = e?.response?.data?.error || e?.message || '';
+  ui.error(msg || '保存失败');
   } finally {
-    saving.value = false;
+  saving.value = false;
   }
 }
 
@@ -483,15 +483,15 @@ async function handleSave() {
 async function handleDelete(contact: ContactItem) {
   if (!confirm(`确定删除联系人「${contact.name || primaryEmail(contact)}」吗？`)) return;
   try {
-    await removeContact(contact.id);
-    ui.success('联系人已删除');
-    // 清空选中状态
-    if (selectedId.value === contact.id) {
-      selectedId.value = null;
-    }
-    await loadContacts();
+  await removeContact(contact.id);
+  ui.success('联系人已删除');
+  // 清空选中状态
+  if (selectedId.value === contact.id) {
+  selectedId.value = null;
+  }
+  await loadContacts();
   } catch (e: any) {
-    ui.error(e?.response?.data?.error || '删除失败');
+  ui.error(e?.response?.data?.error || '删除失败');
   }
 }
 
@@ -1263,83 +1263,83 @@ onUnmounted(() => {
 /* ============ 移动端响应式 ============ */
 @media (max-width: 767px) {
   .contact-page {
-    position: relative;
+  position: relative;
   }
 
   .contact-sidebar {
-    width: 100%;
-    position: absolute;
-    inset: 0;
-    z-index: 1;
-    transition: transform 0.25s ease;
+  width: 100%;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  transition: transform 0.25s ease;
   }
 
   .contact-sidebar.mobile-hidden {
-    transform: translateX(-100%);
+  transform: translateX(-100%);
   }
 
   .contact-detail {
-    position: absolute;
-    inset: 0;
-    z-index: 2;
-    transform: translateX(100%);
-    transition: transform 0.25s ease;
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  transform: translateX(100%);
+  transition: transform 0.25s ease;
   }
 
   .contact-detail.mobile-show {
-    transform: translateX(0);
+  transform: translateX(0);
   }
 
   .detail-content {
-    padding: 20px 16px;
+  padding: 20px 16px;
   }
 
   /* 手机端显示返回按钮 */
   .btn-back-mobile {
-    display: inline-flex;
+  display: inline-flex;
   }
 
   .detail-header {
-    flex-wrap: wrap;
-    gap: 12px;
+  flex-wrap: wrap;
+  gap: 12px;
   }
 
   .avatar-lg {
-    width: 56px;
-    height: 56px;
-    font-size: 22px;
+  width: 56px;
+  height: 56px;
+  font-size: 22px;
   }
 
   .detail-name {
-    font-size: 18px;
+  font-size: 18px;
   }
 
   /* 删除按钮：不占满整行，靠右对齐与头像姓名同一行 */
   .header-actions {
-    flex-shrink: 0;
+  flex-shrink: 0;
   }
 
   /* 移动端删除按钮只显示图标，隐藏文字 */
   .btn-delete .btn-text {
-    display: none;
+  display: none;
   }
   .btn-delete {
-    padding: 7px 9px;
+  padding: 7px 9px;
   }
 
   /* 邮箱数量文字不换行，避免纵向分布 */
   .detail-meta {
-    flex-wrap: nowrap;
-    overflow: hidden;
-    white-space: nowrap;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  white-space: nowrap;
   }
   .meta-email-count {
-    flex-shrink: 0;
+  flex-shrink: 0;
   }
 
   .stats-grid,
   .sections-row {
-    grid-template-columns: 1fr;
+  grid-template-columns: 1fr;
   }
 }
 </style>

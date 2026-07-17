@@ -271,6 +271,39 @@ def build_eml_path(backup_root: Path, email_addr: str, folder: str, filename: st
     return backup_root / safe_email / folder_name / filename
 
 
+
+def resolve_eml_under_backup_root(backup_root: Path, eml_path: Optional[str]) -> Optional[Path]:
+    """将归档表中的相对路径解析为备份根目录下的绝对路径，并防止路径穿越。
+
+    规则：
+    1. 空/None/空白 → None
+    2. 绝对路径 → None（禁止绕过根目录）
+    3. 含 .. 或解析后不在 backup_root 内 → None
+    4. 合法相对路径 → 返回 resolve 后的 Path（不要求文件已存在，由调用方 exists 判断）
+    """
+    if eml_path is None:
+        return None
+    rel = str(eml_path).strip()
+    if not rel:
+        return None
+    try:
+        candidate = Path(rel)
+        # 拒绝绝对路径（含 Windows 盘符路径）
+        if candidate.is_absolute():
+            return None
+        # 拒绝显式父目录段，避免依赖 resolve 行为差异
+        if ".." in candidate.parts:
+            return None
+        root = backup_root.resolve()
+        full = (root / candidate).resolve()
+        # 必须落在备份根目录内（Python 3.9+ is_relative_to）
+        if not full.is_relative_to(root):
+            return None
+        return full
+    except Exception:
+        return None
+
+
 async def get_available_backup_dirs(user_uid: str) -> list[dict]:
     """获取可用的备份目录列表（供前端选择）
 
@@ -435,7 +468,8 @@ async def archive_message(account: Account, folder: str, uid: int) -> bool:
     archived_map = await get_archived_uids(account.id, folder)
     if uid in archived_map:
         rel_path = archived_map[uid]
-        eml_abs = (backup_root / rel_path) if rel_path else None
+        # 用安全解析，避免历史脏数据中的路径穿越
+        eml_abs = resolve_eml_under_backup_root(backup_root, rel_path) if rel_path else None
         if eml_abs and eml_abs.exists():
             return False  # 数据库 + 文件都在，真正跳过
         # 文件丢失：继续走归档流程，覆盖写入
@@ -494,9 +528,9 @@ async def archive_messages_batch(account: Account, folder: str, uids: list[int])
         if uid not in archived_map:
             to_archive.append(uid)  # 数据库无记录
             continue
-        # 数据库有记录：校验本地文件是否真实存在
+        # 数据库有记录：校验本地文件是否真实存在（安全解析相对路径）
         rel_path = archived_map[uid]
-        eml_abs = (backup_root / rel_path) if rel_path else None
+        eml_abs = resolve_eml_under_backup_root(backup_root, rel_path) if rel_path else None
         if eml_abs and eml_abs.exists():
             continue  # 数据库 + 文件都在，跳过
         to_archive.append(uid)  # 文件丢失，重新归档
@@ -572,7 +606,7 @@ async def archive_folder(account: Account, folder: str, max_count: int = 0) -> i
                 to_archive.append(uid)
                 continue
             rel_path = archived_map[uid]
-            eml_abs = (backup_root / rel_path) if rel_path else None
+            eml_abs = resolve_eml_under_backup_root(backup_root, rel_path) if rel_path else None
             if not (eml_abs and eml_abs.exists()):
                 to_archive.append(uid)  # 文件丢失，重新归档
                 logger.warning("归档文件夹: 文件丢失将重新生成 %s/%s uid=%d", account.email, folder, uid)

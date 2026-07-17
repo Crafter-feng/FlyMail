@@ -11,7 +11,7 @@ class Credentials(BaseModel):
     access_token: str = ""
     refresh_token: str = ""
     expires_at: int = 0
-    # O14 修复：使用 Field(default_factory=dict) 避免可变默认值反模式
+    # extra 用 default_factory，避免可变默认值共享
     extra: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -48,6 +48,8 @@ class Message(BaseModel):
     body_html: str = ""
     attachments: List[Attachment] = []  # 附件列表
     has_attachments: bool = False  # 是否有附件（列表展示用）
+    # RFC Message-ID（如 <xxx@mail.gmail.com>），用于回复 In-Reply-To；不是 IMAP UID
+    message_id: str = ""
 
 
 class MessageList(BaseModel):
@@ -64,8 +66,8 @@ class SendResult(BaseModel):
     error: str = ""
 
 
-# OAuth token 操作需要重新授权的永久错误码（RFC 6749 + Google/Microsoft 官方文档）
-# O8 修复：扩展永久错误列表，避免对配置类错误做无意义重试
+# OAuth token 操作需重新授权的永久错误码（RFC 6749 + Google/Microsoft）
+# 含配置类错误，避免对无效请求做无意义重试
 _PERMANENT_OAUTH_ERRORS = frozenset({
     "invalid_grant",              # refresh_token 无效、过期、被撤销（Google + Microsoft 通用）
     "invalid_client",             # 客户端凭据错误（client_id/client_secret 不正确）
@@ -78,7 +80,7 @@ _PERMANENT_OAUTH_ERRORS = frozenset({
 
 
 def parse_retry_after(header_value: str | None) -> float:
-    """解析 HTTP Retry-After 头的值（O11 修复）。
+    """解析 HTTP Retry-After 头的值。
 
     Retry-After 头有两种格式：
     - 数字（秒）：Retry-After: 120
@@ -109,7 +111,7 @@ class OAuthTokenError(Exception):
     上层通过 is_permanent 属性判断是否需要用户重新授权，
     无需再做字符串匹配。
 
-    O11 修复：新增 retry_after 字段，携带 HTTP Retry-After 头的建议等待秒数，
+    新增 retry_after 字段，携带 HTTP Retry-After 头的建议等待秒数，
     上层重试时优先使用此值（用于 429/503 等限流场景）。
     """
     def __init__(self, message: str, error_code: str = "", http_status: int = 0,

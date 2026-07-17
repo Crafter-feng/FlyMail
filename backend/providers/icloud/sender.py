@@ -49,8 +49,7 @@ class ICloudSender(MailSender):
         """同步建立 SMTP 连接（在线程池中运行，使用 IPv4 强制子类 + STARTTLS）"""
         conn = IPv4SMTP(self.SMTP_HOST, self.SMTP_PORT, timeout=self.TIMEOUT)
         conn.ehlo()  # 发送 EHLO 获取服务器支持的功能
-        # 安全修复 S8：传入安全 SSL context，验证证书和主机名
-        # 旧代码 conn.starttls() 不传 context，使用不验证证书的默认 context，存在 MITM 风险
+        # 传入安全 SSL context，验证证书和主机名，降低 MITM 风险
         ssl_ctx = ssl.create_default_context()
         conn.starttls(context=ssl_ctx)
         conn.ehlo()  # STARTTLS 后需要再次 EHLO

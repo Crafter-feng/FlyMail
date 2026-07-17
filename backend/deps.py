@@ -6,9 +6,12 @@
 - get_uid(): 从飞牛OS网关请求头提取用户 ID
 - get_accounts_by_uid(): 获取用户的所有账号
 - get_account(): 获取指定账号（自动处理不存在的情况）
+
+注意：get_account / get_accounts_by_uid 的 request 必须由 FastAPI
+依赖注入为真实 Request 实例，不可把 Request 类当作默认值回退。
 """
 from fastapi import Request, HTTPException, Path as FastAPIPath
-from db import get_accounts
+from db import get_accounts, get_account_by_id
 from models import Account
 from utils.logger import get_logger
 
@@ -24,33 +27,57 @@ async def get_uid(request: Request) -> str:
     return request.headers.get("X-Trim-Userid", "default")
 
 
-async def get_accounts_by_uid(uid: str = None, request: Request = None) -> list[Account]:
-    """获取指定用户的所有邮箱账号
+async def get_accounts_by_uid(request: Request) -> list[Account]:
+    """获取当前请求用户的所有邮箱账号。
 
-    如果未传入 uid，从请求头自动提取。
+    request 必须由 FastAPI Depends 注入为 Request 实例。
     """
-    if uid is None and request is not None:
-        uid = request.headers.get("X-Trim-Userid", "default")
-    return await get_accounts(uid or "default")
+    uid = await get_uid(request)
+    return await get_accounts(uid)
 
 
 async def get_account(
+    request: Request,
     account_id: str = FastAPIPath(..., description="账号 ID"),
-    uid: str = None,
-    request: Request = None,
 ) -> Account:
-    """获取指定的邮箱账号
+    """获取指定的邮箱账号（当前用户范围内）。
 
-    自动从请求头提取 uid，查找指定 ID 的账号。
-    账号不存在时抛出 HTTPException 404。
+    request 必须由 FastAPI 依赖注入为真实 Request 实例；
+    不可用 Request 类做回退（类不是实例，会导致异常）。
+
+    查找策略：
+    1. 按主键 get_account_by_id（高效）
+    2. 校验 account.user_uid 与请求用户一致（防越权）
 
     用法：
         @router.get("/api/accounts/{account_id}/folders")
         async def list_folders(account: Account = Depends(get_account)):
             ...
     """
-    if uid is None:
-        uid = await get_uid(request or Request)
+    # 防御：极少数手动调用场景传入了非法对象
+    if not isinstance(request, Request):
+        logger.error("get_account 缺少有效 Request 依赖，type=%s", type(request))
+        raise HTTPException(
+            status_code=500,
+            detail="内部错误：缺少请求上下文，请使用 Depends(get_account)",
+        )
+
+    uid = await get_uid(request)
+
+    # 优先主键查询，避免加载该用户全部账号
+    account = await get_account_by_id(account_id)
+    if account is not None and account.user_uid == uid:
+        return account
+
+    # 主键命中但属其他用户 → 当作不存在（不泄露）
+    if account is not None and account.user_uid != uid:
+        logger.warning(
+            "账号越权访问拒绝: account_id=%s 请求用户=%s 归属=%s",
+            account_id, uid, account.user_uid,
+        )
+        raise HTTPException(status_code=404, detail="账号不存在或已被删除")
+
+    # 主键未命中：再扫当前用户列表（兼容极端数据不一致）
     accounts = await get_accounts(uid)
     account = next((a for a in accounts if a.id == account_id), None)
     if not account:

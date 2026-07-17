@@ -4,15 +4,15 @@ const api = axios.create({
   baseURL: '/app/flymail/api',
   timeout: 30000,
   headers: {
-    'Content-Type': 'application/json',
+  'Content-Type': 'application/json',
   },
 });
 
 api.interceptors.response.use(
   (response) => response.data,
   (error) => {
-    console.error('API Error:', error);
-    return Promise.reject(error);
+  console.error('API Error:', error);
+  return Promise.reject(error);
   }
 );
 

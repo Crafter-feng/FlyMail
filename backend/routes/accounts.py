@@ -253,7 +253,7 @@ async def get_auth_url(request: Request, body: AuthUrlRequest = Body(description
     # broker_code 的实际回调走 51010 专用端口，不经过飞牛应用网关鉴权。
     frontend_url = _build_oauth_frontend_url(request)
     broker_return_url = _build_oauth_callback_url(request)
-    # 安全修复 S5：state 加入 HMAC 签名和时间戳，防止篡改 uid 冒充其他用户
+    # state 加入 HMAC 签名和时间戳，防止篡改 uid 冒充其他用户
     from routes.auth import _sign_oauth_state
     state_payload = {
         "uid": uid,
@@ -437,7 +437,7 @@ async def remove_account(
     # 清理同步锁，防止内存泄漏
     from services.mail_cache import remove_sync_lock
     remove_sync_lock(account_id)
-    # 修复 P4：清理 token 锁，防止内存泄漏
+    # 清理 token 锁，防止内存泄漏
     from services.token import remove_token_lock
     remove_token_lock(account_id)
     deleted = await delete_account(account_id, uid)

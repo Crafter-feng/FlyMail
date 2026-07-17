@@ -7,53 +7,53 @@ export function useSelectMode(itemIds: () => string[]) {
   const selectedIds = ref<Set<string>>(new Set())
 
   const isAllSelected = computed(() => {
-    const ids = itemIds()
-    return ids.length > 0 && selectedIds.value.size === ids.length
+  const ids = itemIds()
+  return ids.length > 0 && selectedIds.value.size === ids.length
   })
 
   /** 进入多选模式（可选传入初始选中项） */
   function enterSelectMode(id?: string) {
-    selectMode.value = true
-    if (id) {
-      selectedIds.value = new Set([id])
-    } else {
-      selectedIds.value = new Set()
-    }
+  selectMode.value = true
+  if (id) {
+  selectedIds.value = new Set([id])
+  } else {
+  selectedIds.value = new Set()
+  }
   }
 
   /** 退出多选模式 */
   function exitSelectMode() {
-    selectMode.value = false
-    selectedIds.value = new Set()
+  selectMode.value = false
+  selectedIds.value = new Set()
   }
 
   /** 切换单个选中 */
   function toggleSelect(id: string) {
-    const newSet = new Set(selectedIds.value)
-    if (newSet.has(id)) {
-      newSet.delete(id)
-    } else {
-      newSet.add(id)
-    }
-    selectedIds.value = newSet
+  const newSet = new Set(selectedIds.value)
+  if (newSet.has(id)) {
+  newSet.delete(id)
+  } else {
+  newSet.add(id)
+  }
+  selectedIds.value = newSet
   }
 
   /** 全选/取消全选 */
   function toggleSelectAll() {
-    if (isAllSelected.value) {
-      selectedIds.value = new Set()
-    } else {
-      selectedIds.value = new Set(itemIds())
-    }
+  if (isAllSelected.value) {
+  selectedIds.value = new Set()
+  } else {
+  selectedIds.value = new Set(itemIds())
+  }
   }
 
   return {
-    selectMode,
-    selectedIds,
-    isAllSelected,
-    enterSelectMode,
-    exitSelectMode,
-    toggleSelect,
-    toggleSelectAll,
+  selectMode,
+  selectedIds,
+  isAllSelected,
+  enterSelectMode,
+  exitSelectMode,
+  toggleSelect,
+  toggleSelectAll,
   }
 }

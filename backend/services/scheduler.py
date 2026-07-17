@@ -205,7 +205,7 @@ def cancel_scheduled_email(job_id: str, user_uid: str = ""):
         job = scheduler.get_job(job_id)
         if not job:
             return False
-        # 安全修复 S4：校验任务归属，防止跨用户取消
+        # 校验任务归属，防止跨用户取消
         if user_uid and job.kwargs.get("user_uid", "") != user_uid:
             return False
         scheduler.remove_job(job_id)
@@ -220,7 +220,7 @@ def get_scheduled_jobs(user_uid: str = ""):
     jobs = _get_scheduler().get_jobs()
     result = []
     for job in jobs:
-        # 安全修复 S4：按 user_uid 过滤，防止跨用户查看
+        # 按 user_uid 过滤，防止跨用户查看
         if user_uid and job.kwargs.get("user_uid", "") != user_uid:
             continue
         result.append({
