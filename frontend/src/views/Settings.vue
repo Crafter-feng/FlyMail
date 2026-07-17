@@ -410,41 +410,13 @@
   </div>
   </transition>
 
-  <!-- 备份目录选择器弹窗 -->
-  <div v-if="showBackupPathPicker" class="glass-overlay" @click.self="showBackupPathPicker = false">
-  <div class="modal backup-path-picker">
-  <div class="modal-head">
-  <h4>选择备份目录</h4>
-  <button class="btn-icon-sm neu-circle" @click="showBackupPathPicker = false">
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-  </button>
-  </div>
-  <div class="modal-nav">
-  <span v-if="backupPickerBreadcrumbs.length === 0" class="nav-item">授权目录</span>
-  <template v-for="(b, i) in backupPickerBreadcrumbs" :key="i">
-  <span class="nav-item" @click="backupPickerNavigateTo(i)">
-  {{ b.name }}<span v-if="i < backupPickerBreadcrumbs.length - 1" class="nav-sep">/</span>
-  </span>
-  </template>
-  </div>
-  <div class="modal-list">
-  <div v-if="backupPickerLoading" class="modal-empty">加载中...</div>
-  <div v-else-if="backupPickerDirs.length === 0" class="modal-empty">
-  {{ backupPickerBreadcrumbs.length === 0 ? '暂无可用授权目录，请先在飞牛应用设置中授权目录后点击"刷新"' : '此目录下无子目录' }}
-  </div>
-  <div v-else v-for="dir in backupPickerDirs" :key="dir" class="modal-dir" @click="backupPickerEnterDir(dir)">
-  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
-  <span>{{ pathBasename(dir) }}</span>
-  </div>
-  </div>
-  <div class="modal-foot">
-  <span class="modal-path">{{ backupPickerCurrentPath || '请选择目录' }}</span>
-  <div class="modal-btns">
-  <button class="btn-save" @click="confirmBackupPathPick" :disabled="!backupPickerCurrentPath">确定</button>
-  </div>
-  </div>
-  </div>
-  </div>
+  <!-- 备份目录选择器（复用 NasPathPicker） -->
+  <NasPathPicker
+  v-model="showBackupPathPicker"
+  mode="dir"
+  title="选择备份目录"
+  @confirm="onBackupPathConfirmed"
+  />
   </div>
 </template>
 
@@ -453,6 +425,7 @@ import { ref, onMounted, onUnmounted } from 'vue';
 import api from '../utils/api';
 import { providerIcon } from '../utils/provider';
 import type { BackupAccount, BackupDir } from '../types/mail';
+import NasPathPicker from '../components/NasPathPicker.vue';
 
 // ==================== 教程数据 ====================
 
@@ -711,23 +684,13 @@ async function saveBackupSettings() {
   }
 }
 
-// ==================== 备份目录选择器（面包屑+逐级浏览） ====================
+// ==================== 备份目录选择器（NasPathPicker） ====================
 
-/** 获取路径的 basename（最后一级目录名） */
-function pathBasename(path: string): string {
-  const parts = path.replace(/\\/g, '/').split('/').filter(Boolean);
-  return parts[parts.length - 1] || path;
-}
-
-/** 加载飞牛授权目录列表（供目录选择器初始展示） */
+/** 加载飞牛授权目录列表（刷新按钮用） */
 async function loadBackupAccessiblePaths() {
   try {
   const data = await api.get('/backup/accessible-paths') as any;
   backupAccessiblePaths.value = data.paths || [];
-  // 如果选择器已打开，更新列表
-  if (showBackupPathPicker.value && backupPickerBreadcrumbs.value.length === 0) {
-  backupPickerDirs.value = backupAccessiblePaths.value;
-  }
   } catch (e) {
   console.error('加载授权目录失败:', e);
   backupAccessiblePaths.value = [];
@@ -736,61 +699,13 @@ async function loadBackupAccessiblePaths() {
 
 /** 打开目录选择器弹窗 */
 function openBackupPathPicker() {
-  backupPickerBreadcrumbs.value = [];
-  backupPickerCurrentPath.value = '';
-  backupPickerDirs.value = backupAccessiblePaths.value;
+  if (!backupForm.value.enabled) return;
   showBackupPathPicker.value = true;
-  // 首次打开时自动加载授权目录
-  if (backupAccessiblePaths.value.length === 0) {
-  loadBackupAccessiblePaths();
-  }
-}
-
-/** 进入下一层目录
- *  点击授权目录（顶层）时重置面包屑，点击子目录时追加到面包屑
- */
-async function backupPickerEnterDir(dir: string) {
-  const dirName = pathBasename(dir);
-  // 点击的是授权目录（顶层）→ 重置面包屑
-  if (backupAccessiblePaths.value.includes(dir)) {
-  backupPickerBreadcrumbs.value = [{ name: dirName, path: dir }];
-  } else {
-  backupPickerBreadcrumbs.value.push({ name: dirName, path: dir });
-  }
-  backupPickerCurrentPath.value = dir;
-  await loadBackupPickerSubDirs(dir);
-}
-
-/** 点击面包屑导航到指定层级 */
-function backupPickerNavigateTo(idx: number) {
-  backupPickerBreadcrumbs.value = backupPickerBreadcrumbs.value.slice(0, idx + 1);
-  const currentPath = backupPickerBreadcrumbs.value[idx].path;
-  backupPickerCurrentPath.value = currentPath;
-  loadBackupPickerSubDirs(currentPath);
-}
-
-/** 加载指定路径下的子目录列表（一层） */
-async function loadBackupPickerSubDirs(path: string) {
-  backupPickerLoading.value = true;
-  try {
-  const data = await api.get('/backup/accessible-paths/children', { params: { path } }) as any;
-  backupPickerDirs.value = data.dirs || [];
-  if (data.error) {
-  backupError.value = data.error;
-  setTimeout(() => { backupError.value = ''; }, 5000);
-  }
-  } catch (e) {
-  console.error('加载子目录失败:', e);
-  backupPickerDirs.value = [];
-  } finally {
-  backupPickerLoading.value = false;
-  }
 }
 
 /** 确认选择，将当前路径写回复份配置 */
-function confirmBackupPathPick() {
-  if (!backupPickerCurrentPath.value) return;
-  backupForm.value.target_dir = backupPickerCurrentPath.value;
+function onBackupPathConfirmed(path: string) {
+  backupForm.value.target_dir = path;
   showBackupPathPicker.value = false;
 }
 </script>
