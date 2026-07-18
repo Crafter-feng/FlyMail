@@ -178,15 +178,23 @@ router = APIRouter(tags=["邮件"])
 
 
 def _extract_uid(message_id: str) -> str:
-    """从 message_id 中提取纯 UID
+    """从 message_id 中提取纯 UID（IMAP UID 字符串）。
 
-    兼容两种格式：
-    - 纯数字 UID（如 "2326"）：直接返回
-    - 旧格式 account_id_uid（如 "0542f9e0-30d8-4de5-9d0a-b5ddab8d5f1c_2326"）：取下划线后部分
+    支持格式：
+    - 纯数字 UID：如 "2326"
+    - 缓存主键 account_id:folder:uid：如 "uuid:INBOX:2418"（当前 make_cached_message_id）
+    - 旧格式 account_id_uid：如 "uuid_2326"
     """
-    if "_" in message_id:
-        return message_id.rsplit("_", 1)[-1]
-    return message_id
+    if not message_id:
+        return message_id
+    mid = str(message_id).strip()
+    # 当前缓存 ID：{account_id}:{folder}:{uid} —— UID 在最后一段
+    if ":" in mid:
+        mid = mid.rsplit(":", 1)[-1]
+    # 旧格式：{account_id}_{uid}
+    if "_" in mid:
+        mid = mid.rsplit("_", 1)[-1]
+    return mid
 
 
 async def _get_trash_folder_dynamic(account: Account) -> str:
