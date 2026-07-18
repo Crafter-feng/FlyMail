@@ -1648,15 +1648,15 @@ watch(showNotificationPanel, (open) => {
 
 /* 文本溢出时由 JS 添加 marquee class 触发滚动 */
 .notif-desc-text.marquee {
-  animation: notif-marquee 12s linear infinite;
+  animation: notif-marquee 8s linear infinite;
 }
 
 /* marquee 动画：开头停顿2秒 → 滚动 → 末尾停顿2秒 → 循环
  * 滚动距离使用 CSS 变量 --marquee-distance（像素值，由 JS 检测溢出后设置）
  * 这样可以精确表达"文字宽度-容器宽度"的位移 */
 @keyframes notif-marquee {
-  0%, 15% { transform: translateX(0); }  /* 开头停顿约2秒 */
-  85%, 100% { transform: translateX(calc(-1 * var(--marquee-distance))); }  /* 滚动到末尾后停顿 */
+  0%, 12% { transform: translateX(0); }  /* 开头短暂停顿 */
+  88%, 100% { transform: translateX(calc(-1 * var(--marquee-distance))); }  /* 滚到末尾并停住 */
 }
 
 /* 空状态 */
