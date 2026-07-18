@@ -178,6 +178,33 @@ async def init_db():
     except Exception as e:
         logger.debug("迁移加列已存在，忽略 notifications.message: %s", e)
 
+    # 通知表扩展：消息定位 + 摘要（点击跳详情 / Webhook·Telegram·Bark 铺垫）
+    _notif_new_cols = [
+        ("message_cache_id", "TEXT DEFAULT ''"),
+        ("message_uid", "INTEGER DEFAULT 0"),
+        ("rfc_message_id", "TEXT DEFAULT ''"),
+        ("subject", "TEXT DEFAULT ''"),
+        ("from_addr", "TEXT DEFAULT ''"),
+        ("to_addr", "TEXT DEFAULT ''"),
+        ("cc", "TEXT DEFAULT ''"),
+        ("mail_date", "TEXT DEFAULT ''"),
+        ("body_preview", "TEXT DEFAULT ''"),
+        ("has_attachments", "INTEGER DEFAULT 0"),
+        ("batch_count", "INTEGER DEFAULT 1"),
+        ("extra_json", "TEXT DEFAULT ''"),
+    ]
+    for _col, _decl in _notif_new_cols:
+        try:
+            await db.execute(f"ALTER TABLE notifications ADD COLUMN {_col} {_decl}")
+        except Exception as e:
+            logger.debug("迁移加列已存在，忽略 notifications.%s: %s", _col, e)
+    try:
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_notifications_msg ON notifications(user_uid, message_cache_id)"
+        )
+    except Exception as e:
+        logger.debug("创建索引已存在，忽略 idx_notifications_msg: %s", e)
+
     # signatures 表添加 user_uid 字段，支持多用户隔离
     try:
         await db.execute("ALTER TABLE signatures ADD COLUMN user_uid TEXT DEFAULT ''")
@@ -391,21 +418,41 @@ async def update_account_info(account_id: str, user_uid: str, remark: str = "", 
 # ==================== 通知 CRUD ====================
 
 async def create_notification(notification: Notification) -> Notification:
-    """创建通知记录（新邮件、定时发送结果等）"""
+    """创建通知记录（新邮件到达、定时/备份结果等）"""
     db = await get_db()
     await db.execute(
-        "INSERT INTO notifications (id, user_uid, account_id, provider, email, folder, is_read, created_at, type, message) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (notification.id, notification.user_uid, notification.account_id,
-         notification.provider, notification.email, notification.folder,
-         1 if notification.is_read else 0, notification.created_at,
-         notification.type, notification.message)
+        """INSERT INTO notifications (
+            id, user_uid, account_id, provider, email, folder, is_read, created_at, type, message,
+            message_cache_id, message_uid, rfc_message_id,
+            subject, from_addr, to_addr, cc, mail_date, body_preview,
+            has_attachments, batch_count, extra_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            notification.id, notification.user_uid, notification.account_id,
+            notification.provider, notification.email, notification.folder,
+            1 if notification.is_read else 0, notification.created_at,
+            notification.type, notification.message,
+            getattr(notification, "message_cache_id", "") or "",
+            int(getattr(notification, "message_uid", 0) or 0),
+            getattr(notification, "rfc_message_id", "") or "",
+            getattr(notification, "subject", "") or "",
+            getattr(notification, "from_addr", "") or "",
+            getattr(notification, "to_addr", "") or "",
+            getattr(notification, "cc", "") or "",
+            getattr(notification, "mail_date", "") or "",
+            getattr(notification, "body_preview", "") or "",
+            1 if getattr(notification, "has_attachments", False) else 0,
+            int(getattr(notification, "batch_count", 1) or 1),
+            getattr(notification, "extra_json", "") or "",
+        ),
     )
     await db.commit()
     return notification
 
 
+
 async def get_notifications(user_uid: str, limit: int = 50) -> List[Notification]:
-    """获取用户的通知列表（按时间倒序，最多 limit 条）"""
+    """获取用户的通知列表，按时间倒序，最多 limit 条"""
     db = await get_db()
     cursor = await db.execute(
         "SELECT * FROM notifications WHERE user_uid = ? ORDER BY created_at DESC LIMIT ?",
@@ -413,7 +460,16 @@ async def get_notifications(user_uid: str, limit: int = 50) -> List[Notification
     )
     rows = await cursor.fetchall()
     columns = [description[0] for description in cursor.description]
-    return [Notification(**dict(zip(columns, row))) for row in rows]
+    result = []
+    for row in rows:
+        data = dict(zip(columns, row))
+        if "is_read" in data:
+            data["is_read"] = bool(data["is_read"])
+        if "has_attachments" in data:
+            data["has_attachments"] = bool(data["has_attachments"])
+        result.append(Notification(**{k: v for k, v in data.items() if k in Notification.model_fields}))
+    return result
+
 
 
 async def mark_notification_read(notification_id: str, user_uid: str) -> bool:

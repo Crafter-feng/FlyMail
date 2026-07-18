@@ -290,7 +290,8 @@ async def _sync_folder_background(account: Account, folder: str):
     同步完成后通过 WebSocket 通知前端刷新。
     """
     try:
-        new_count = await sync_folder_to_cache(account, folder)
+        _sync_result = await sync_folder_to_cache(account, folder)
+        new_count = int(_sync_result)
         if new_count > 0:
             # 缓存同步不是真正新邮件，只推送刷新信号（不创建通知记录）
             # 必须带 user_uid，避免多用户场景下广播给所有人

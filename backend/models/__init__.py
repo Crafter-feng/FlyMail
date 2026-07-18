@@ -41,17 +41,35 @@ class CachedMessage(BaseModel):
 
 
 class Notification(BaseModel):
-  """通知记录（新邮件、定时发送结果等）"""
+  """通知记录（新邮件、定时发送结果等）
+
+  新邮件类通知尽量自带定位字段与摘要，支撑点击跳转详情与后期外发通道。
+  """
   id: str  # 唯一ID
   user_uid: str  # 飞牛OS 用户ID
-  account_id: str  # 关联的邮箱账号ID
+  account_id: str  # 关联的邮箱账户ID
   provider: str  # 邮箱平台：qq / gmail / netease
   email: str  # 邮箱地址
   folder: str  # 文件夹
   is_read: bool = False  # 是否已读
   created_at: float = 0.0  # 通知创建时间戳
   type: str = "new_mail"  # 通知类型：new_mail / schedule_success / schedule_failed / backup_success / backup_failed
-  message: str = ""  # 通知描述文本（定时发送结果等）
+  message: str = ""  # 通知描述文本（新邮件优先为主题）
+  # 定位（点击跳详情）
+  message_cache_id: str = ""
+  message_uid: int = 0
+  rfc_message_id: str = ""
+  # 摘要（列表/外发）
+  subject: str = ""
+  from_addr: str = ""
+  to_addr: str = ""
+  cc: str = ""
+  mail_date: str = ""
+  body_preview: str = ""
+  has_attachments: bool = False
+  batch_count: int = 1
+  extra_json: str = ""
+
 
 
 class Signature(BaseModel):

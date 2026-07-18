@@ -365,7 +365,7 @@ class ScheduledMessagesResponse(BaseModel):
 
 class NotificationItem(BaseModel):
   id: str = Field(description="通知ID")
-  account_id: str = Field(description="账号ID")
+  account_id: str = Field(description="账户ID")
   provider: str = Field(description="邮箱平台")
   email: str = Field(description="邮箱地址")
   folder: str = Field(description="文件夹")
@@ -373,6 +373,17 @@ class NotificationItem(BaseModel):
   time: float = Field(description="通知时间（毫秒时间戳）")
   type: str = Field(default="new_mail", description="通知类型：new_mail / schedule_success / schedule_failed")
   message: str = Field(default="", description="通知描述文本")
+  message_cache_id: str = Field(default="", description="缓存邮件ID，用于跳转详情")
+  message_uid: int = Field(default=0, description="IMAP UID")
+  rfc_message_id: str = Field(default="", description="RFC Message-ID")
+  subject: str = Field(default="", description="邮件主题")
+  from_addr: str = Field(default="", description="发件人")
+  to_addr: str = Field(default="", description="收件人")
+  cc: str = Field(default="", description="抄送")
+  mail_date: str = Field(default="", description="邮件 Date 头")
+  body_preview: str = Field(default="", description="正文纯文本截取")
+  has_attachments: bool = Field(default=False, description="是否有附件")
+  batch_count: int = Field(default=1, description="批量计数，P1 恒为 1")
 
 
 class NotificationListResponse(BaseModel):

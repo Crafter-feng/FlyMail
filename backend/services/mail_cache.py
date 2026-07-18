@@ -11,6 +11,76 @@
 
 import asyncio
 import time
+
+from dataclasses import dataclass, field
+from typing import Any, List as _ListTyping
+
+BODY_PREVIEW_MAX = 300
+
+
+@dataclass
+class SyncFolderResult:
+    """文件夹同步结果：新增数量 + 本次新邮件摘要（供通知全部展开）。"""
+    new_count: int = 0
+    new_items: list = field(default_factory=list)
+
+    def __int__(self) -> int:
+        return int(self.new_count)
+
+    def __index__(self) -> int:
+        return int(self.new_count)
+
+    def __bool__(self) -> bool:
+        return self.new_count > 0
+
+
+def build_body_preview(body_text: str = "", body_html: str = "", max_len: int = BODY_PREVIEW_MAX) -> str:
+    """从正文生成通知用纯文本截取（不含完整 HTML）。"""
+    text_val = (body_text or "").strip()
+    if not text_val and body_html:
+        # 粗去标签
+        import re as _re
+        text_val = _re.sub(r"(?is)<script[^>]*>.*?</script>", " ", body_html)
+        text_val = _re.sub(r"(?is)<style[^>]*>.*?</style>", " ", text_val)
+        text_val = _re.sub(r"(?s)<[^>]+>", " ", text_val)
+        text_val = _re.sub(r"\s+", " ", text_val).strip()
+    if not text_val:
+        return ""
+    text_val = " ".join(text_val.split())
+    if len(text_val) > max_len:
+        return text_val[:max_len] + "…"
+    return text_val
+
+
+def messages_to_new_mail_items(messages, account, folder: str, existing_uids: set) -> list:
+    """从本次同步的 Message 列表提取真正新增邮件的通知摘要项。"""
+    items = []
+    for m in messages:
+        if not m.uid or m.uid in existing_uids:
+            continue
+        cache_id = make_cached_message_id(account.id, folder or m.folder, m.uid)
+        subject = (getattr(m, "subject", None) or "").strip()
+        items.append({
+            "account_id": account.id,
+            "folder": folder or m.folder or "INBOX",
+            "uid": int(m.uid),
+            "message_cache_id": cache_id,
+            "subject": subject,
+            "from_addr": getattr(m, "from_addr", "") or "",
+            "to_addr": getattr(m, "to_addr", "") or "",
+            "cc": getattr(m, "cc", "") or "",
+            "mail_date": getattr(m, "date", "") or "",
+            "body_preview": build_body_preview(
+                getattr(m, "body_text", "") or "",
+                getattr(m, "body_html", "") or "",
+            ),
+            "has_attachments": bool(getattr(m, "has_attachments", False)),
+            "rfc_message_id": getattr(m, "message_id", "") or "",
+        })
+    # 新到旧
+    items.sort(key=lambda x: x.get("uid", 0), reverse=True)
+    return items
+
 from typing import Dict, List
 
 from db import (
@@ -114,7 +184,7 @@ def remove_sync_lock(account_id: str):
     _sync_locks.pop(account_id, None)
 
 
-async def sync_folder_to_cache(account: Account, folder: str = "INBOX", force_full: bool = False) -> int:
+async def sync_folder_to_cache(account: Account, folder: str = "INBOX", force_full: bool = False) -> SyncFolderResult:
     """将文件夹的邮件摘要同步到本地缓存（增量：只拉取新邮件）
 
     使用独立的 IMAP 连接，不影响后台实时监听连接。
@@ -135,7 +205,7 @@ async def sync_folder_to_cache(account: Account, folder: str = "INBOX", force_fu
             return await _do_sync(receiver, account, folder, force_full=force_full)
         except Exception as e:
             logger.warning("同步账号 %s 文件夹 %s 失败: %s", account.email, folder, e)
-            return 0
+            return SyncFolderResult(0, [])
         finally:
             if receiver:
                 try:
@@ -144,7 +214,7 @@ async def sync_folder_to_cache(account: Account, folder: str = "INBOX", force_fu
                     logger.debug("同步后断开连接失败: %s", e)
 
 
-async def _do_sync(receiver, account: Account, folder: str, force_full: bool = False) -> int:
+async def _do_sync(receiver, account: Account, folder: str, force_full: bool = False) -> SyncFolderResult:
     """执行增量同步核心逻辑
 
     统一使用 UID SEARCH 做增量检查：
@@ -160,6 +230,7 @@ async def _do_sync(receiver, account: Account, folder: str, force_full: bool = F
     max_uid = await get_max_cached_uid(account.user_uid, account.id, folder)
     folder_stats = await get_folder_stats(account.id, folder)
     inserted_count = 0
+    new_mail_items = []
 
     # 首次同步判断：max_uid=0 且从未同步过（updated_at=0）。若 max_uid=0 但 updated_at≠0，说明曾经同步过但邮件被全部删除，走增量同步即可
     # force_full=True 时强制走全量同步（rebuild-sync 场景）
@@ -297,6 +368,8 @@ async def _do_sync(receiver, account: Account, folder: str, force_full: bool = F
         existing_uids = await get_cached_uids(account.id, folder)
         inserted_count = sum(1 for m in messages if m.uid not in existing_uids)
 
+        new_mail_items = messages_to_new_mail_items(messages, account, folder, existing_uids)
+
         # 用 UNSEEN 校正本次拉取邮件的 is_read 状态
         if unseen_uids is not None:
             for m in messages:
@@ -423,7 +496,7 @@ async def _do_sync(receiver, account: Account, folder: str, force_full: bool = F
                         account.email, folder, attempt + 1, e,
                     )
 
-    return inserted_count
+    return SyncFolderResult(inserted_count, new_mail_items)
 
 
 async def sync_missing_messages(account: Account, folder: str) -> int:
@@ -562,8 +635,8 @@ async def sync_all_folders(account: Account, folder_paths: List[str], force_full
     total_folders = len(folder_paths)
     for i, folder_path in enumerate(folder_paths):
         try:
-            count = await sync_folder_to_cache(account, folder_path, force_full=force_full)
-            total_new += count
+            result = await sync_folder_to_cache(account, folder_path, force_full=force_full)
+            total_new += int(result)
             # 推送同步进度
             if user_uid:
                 try:

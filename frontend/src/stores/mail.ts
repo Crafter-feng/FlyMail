@@ -43,63 +43,147 @@ export const useMailStore = defineStore('mail', () => {
 
   /** 通知条目 */
   interface MailNotification {
-  id: string;  // 唯一ID
-  provider: string;  // 邮箱平台：qq / gmail / netease
-  email: string;  // 邮箱地址
-  folder: string;  // 文件夹
-  time: number;  // 通知时间戳（毫秒）
-  read: boolean;  // 是否已读
-  type: string;  // 通知类型：new_mail / schedule_success / schedule_failed
-  message: string;  // 通知描述文本
+    id: string;  // 唯一ID
+    account_id?: string;  // 账户ID（跳转用）
+    provider: string;  // 邮箱平台：qq / gmail / netease
+    email: string;  // 邮箱地址
+    folder: string;  // 文件夹
+    time: number;  // 通知时间（毫秒）
+    read: boolean;  // 是否已读
+    type: string;  // 通知类型：new_mail / schedule_success / schedule_failed
+    message: string;  // 通知描述文本
+    message_cache_id?: string;
+    message_uid?: number;
+    rfc_message_id?: string;
+    subject?: string;
+    from_addr?: string;
+    to_addr?: string;
+    cc?: string;
+    mail_date?: string;
+    body_preview?: string;
+    has_attachments?: boolean;
+    batch_count?: number;
+  }
+
+  /** 点击通知后待打开的邮件（由 MailList 消费） */
+  interface PendingOpenMessage {
+    accountId: string;
+    folder: string;
+    messageCacheId: string;
   }
 
   const notifications = ref<MailNotification[]>([]);
+  const pendingOpenMessage = ref<PendingOpenMessage | null>(null);
+
+  function requestOpenMessage(payload: PendingOpenMessage) {
+    pendingOpenMessage.value = payload;
+  }
+
+  function clearPendingOpenMessage() {
+    pendingOpenMessage.value = null;
+  }
 
   /** 未读通知数量 */
   const unreadNotificationCount = computed(() =>
-  notifications.value.filter(n => !n.read).length
+    notifications.value.filter(n => !n.read).length
   );
 
   /** 从后端数据库加载通知列表（页面初始化时调用） */
   async function loadNotifications() {
-  try {
-  const data = await api.get('/notifications') as any;
-  if (data.notifications) {
-  notifications.value = data.notifications.map((n: any) => ({
-  id: n.id,
-  provider: n.provider,
-  email: n.email,
-  folder: n.folder,
-  time: n.time,  // 后端返回毫秒时间戳
-  read: n.is_read,
-  type: n.type || 'new_mail',
-  message: n.message || '',
-  }));
-  }
-  } catch (e) {
-  console.error('加载通知失败:', e);
-  uiStore.error('加载通知失败');
-  }
+    try {
+      const data = await api.get('/notifications') as any;
+      if (data.notifications) {
+        notifications.value = data.notifications.map((n: any) => ({
+          id: n.id,
+          account_id: n.account_id || '',
+          provider: n.provider,
+          email: n.email,
+          folder: n.folder,
+          time: n.time,
+          read: n.is_read,
+          type: n.type || 'new_mail',
+          message: n.message || '',
+          message_cache_id: n.message_cache_id || '',
+          message_uid: n.message_uid || 0,
+          rfc_message_id: n.rfc_message_id || '',
+          subject: n.subject || '',
+          from_addr: n.from_addr || '',
+          to_addr: n.to_addr || '',
+          cc: n.cc || '',
+          mail_date: n.mail_date || '',
+          body_preview: n.body_preview || '',
+          has_attachments: !!n.has_attachments,
+          batch_count: n.batch_count || 1,
+        }));
+      }
+    } catch (e) {
+      console.error('加载通知失败:', e);
+      uiStore.error('加载通知失败');
+    }
   }
 
-  /** 添加通知（WebSocket 推送时调用，使用后端生成的通知ID） */
-  function addNotification(provider: string, email: string, folder: string, notificationId?: string, type: string = 'new_mail', message: string = '') {
-  const id = notificationId || (Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
-  if (notifications.value.some(n => n.id === id)) return;
-  notifications.value.unshift({
-  id,
-  provider,
-  email,
-  folder,
-  time: Date.now(),
-  read: false,
-  type,
-  message,
-  });
-  // 最多保留50条通知
-  if (notifications.value.length > 50) {
-  notifications.value = notifications.value.slice(0, 50);
-  }
+  /** 添加通知（WebSocket 推送时调用；支持对象载荷或旧版位置参数） */
+  function addNotification(
+    providerOrPayload: string | (Partial<MailNotification> & {
+      provider?: string;
+      email?: string;
+      folder?: string;
+      notificationId?: string;
+      type?: string;
+      message?: string;
+    }),
+    email?: string,
+    folder?: string,
+    notificationId?: string,
+    type: string = 'new_mail',
+    message: string = '',
+  ) {
+    let payload: any;
+    if (typeof providerOrPayload === 'object' && providerOrPayload !== null) {
+      payload = providerOrPayload;
+    } else {
+      payload = {
+        provider: providerOrPayload as string,
+        email: email || '',
+        folder: folder || 'INBOX',
+        notificationId,
+        type,
+        message,
+      };
+    }
+    const id = payload.notificationId || payload.id || (Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
+    if (notifications.value.some(n => n.id === id)) return;
+    const subject = (payload.subject || '').trim();
+    const nType = payload.type || 'new_mail';
+    const msg = nType === 'new_mail'
+      ? (subject || payload.message || '(无主题)')
+      : (payload.message || '');
+    notifications.value.unshift({
+      id,
+      account_id: payload.account_id || '',
+      provider: payload.provider || '',
+      email: payload.email || '',
+      folder: payload.folder || 'INBOX',
+      time: payload.time || Date.now(),
+      read: false,
+      type: nType,
+      message: msg,
+      message_cache_id: payload.message_cache_id || '',
+      message_uid: payload.message_uid || 0,
+      rfc_message_id: payload.rfc_message_id || '',
+      subject,
+      from_addr: payload.from_addr || '',
+      to_addr: payload.to_addr || '',
+      cc: payload.cc || '',
+      mail_date: payload.mail_date || '',
+      body_preview: payload.body_preview || '',
+      has_attachments: !!payload.has_attachments,
+      batch_count: payload.batch_count || 1,
+    });
+    // 最多保留 50 条通知
+    if (notifications.value.length > 50) {
+      notifications.value = notifications.value.slice(0, 50);
+    }
   }
 
   /** 标记单条通知为已读（同步到后端数据库） */
@@ -449,7 +533,7 @@ export const useMailStore = defineStore('mail', () => {
   user, loading, fetchUser,
   currentFolder, currentAccountId, accounts, reauthAccountIds, folders, currentFolderName,
   loadAccounts, loadFolders, loadFolderCounts, setFolder, setAccount, clearCurrentAccountState, folderDisplayName, updateFolderCounts, decrementUnreadCount,
-  notifications, unreadNotificationCount, addNotification, markNotificationRead, markAllNotificationsRead, clearNotifications, loadNotifications,
+  notifications, unreadNotificationCount, addNotification, markNotificationRead, markAllNotificationsRead, clearNotifications, loadNotifications, pendingOpenMessage, requestOpenMessage, clearPendingOpenMessage,
   unifiedAccountIds, loadUnifiedSettings, saveUnifiedSettings,
   composeDraft, setComposeDraft, consumeComposeDraft,
   saveSortOrder,

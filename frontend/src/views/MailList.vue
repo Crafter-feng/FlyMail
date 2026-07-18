@@ -666,6 +666,51 @@ watch(
   }
 );
 
+
+// 通知点击：打开指定邮件详情（单账户）
+watch(
+  () => [
+    mailStore.pendingOpenMessage,
+    mailStore.currentAccountId,
+    mailStore.currentFolder,
+  ],
+  async () => {
+    const p = mailStore.pendingOpenMessage;
+    if (!p || !p.messageCacheId) return;
+    // 账户/文件夹尚未切到目标时等待（setAccount/setFolder 与挂载竞态）
+    if (p.accountId && mailStore.currentAccountId && p.accountId !== mailStore.currentAccountId) return;
+    if (p.folder && mailStore.currentFolder && p.folder !== mailStore.currentFolder) return;
+
+    const targetId = p.messageCacheId;
+    // 先清空，避免重复 select；若失败用户可再点通知
+    mailStore.clearPendingOpenMessage();
+
+    await nextTick();
+    try {
+      const listed = messages.value.find((m: any) => String(m.id) === String(targetId));
+      const stub: any = listed || {
+        id: targetId,
+        subject: '',
+        from_addr: '',
+        to_addr: '',
+        date: '',
+        is_read: true,
+        is_starred: false,
+        has_attachments: false,
+        body_html: '',
+        body_text: '',
+        attachments: [],
+      };
+      await selectMessage(stub);
+    } catch (e) {
+      console.error('通知跳转打开邮件失败:', e);
+      uiStore.error('无法打开该邮件，可能已删除或尚未同步');
+    }
+  },
+  // immediate: 从其他页切入 MailList 时 pending 已先写入，需挂载即消费
+  { flush: 'post', immediate: true },
+);
+
 onMounted(() => {
   loadMessages();
   connectWs();

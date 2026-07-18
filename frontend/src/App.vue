@@ -258,7 +258,7 @@
   <span class="notif-dot" v-if="!n.read"></span>
   <span class="notif-time">{{ formatNotifTime(n.time) }}</span>
   </div>
-  <div class="notif-desc"><span class="notif-desc-text">{{ n.type === 'new_mail' ? (n.email + ' 收到新邮件') : n.message }}</span></div>
+  <div class="notif-desc"><span class="notif-desc-text">{{ n.type === 'new_mail' ? (n.subject || n.message || '(无主题)') : n.message }}</span></div>
   </div>
   </div>
   </div>
@@ -364,16 +364,59 @@ function toggleNotificationPanel() {
 /** 点击单条通知：标记已读 + 跳转到对应文件夹 */
 function handleNotifClick(n: any) {
   mailStore.markNotificationRead(n.id);
-  // 跳转到邮件页面并选中收件箱
+  showNotificationPanel.value = false;
+
+  // 非新邮件类通知仅标记已读（定时/备份等）
+  if (n.type && n.type !== 'new_mail') {
+    return;
+  }
+
+  // 切换到单账户邮件列表（非综合收件箱）
   currentView.value = 'mail';
-  mailStore.setFolder('INBOX');
+  if (n.account_id && n.account_id !== mailStore.currentAccountId) {
+    mailStore.setAccount(n.account_id);
+  } else if (n.account_id && !mailStore.currentAccountId) {
+    mailStore.setAccount(n.account_id);
+  }
+  const folder = n.folder || 'INBOX';
+  if (folder !== mailStore.currentFolder) {
+    mailStore.setFolder(folder);
+  }
+
+  // 有缓存 ID 时打开详情；旧通知无 ID 则只进列表
+  if (n.message_cache_id) {
+    mailStore.requestOpenMessage({
+      accountId: n.account_id || mailStore.currentAccountId || '',
+      folder,
+      messageCacheId: n.message_cache_id,
+    });
+  }
 }
 
 /** 处理全局 WebSocket 消息：通知中心、顶栏铃铛、账号状态 */
 function handleGlobalWsMessage(data: any) {
   if (data.type === 'new_mail') {
   if (data.provider && data.email) {
-  mailStore.addNotification(data.provider, data.email, data.folder || 'INBOX', data.notification_id);
+  mailStore.addNotification({
+  provider: data.provider,
+  email: data.email,
+  folder: data.folder || 'INBOX',
+  notificationId: data.notification_id,
+  account_id: data.account_id || '',
+  type: 'new_mail',
+  message: data.message || data.subject || '',
+  message_cache_id: data.message_cache_id || '',
+  message_uid: data.message_uid || 0,
+  rfc_message_id: data.rfc_message_id || '',
+  subject: data.subject || '',
+  from_addr: data.from_addr || '',
+  to_addr: data.to_addr || '',
+  cc: data.cc || '',
+  mail_date: data.mail_date || '',
+  body_preview: data.body_preview || '',
+  has_attachments: !!data.has_attachments,
+  batch_count: data.batch_count || 1,
+  });
   }
   if (!data.account_id || data.account_id === mailStore.currentAccountId) {
   mailStore.loadFolderCounts();

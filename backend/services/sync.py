@@ -149,41 +149,93 @@ class MailSyncService:
         }), user_uid)
 
     async def notify_clients(self, account_id: str, folder: str = "INBOX",
-                                provider: str = "", email: str = "", user_uid: str = ""):
-        """通知 WebSocket 客户端有新邮件，同时将通知持久化到数据库
+                             provider: str = "", email: str = "", user_uid: str = "",
+                             items: list | None = None):
+        """通知 WebSocket 客户端有新邮件，同时将通知持久化到数据库。
 
-        仅在确认收件箱真正新增邮件时调用；普通缓存刷新场景请用 refresh_clients。
-        只推送给该账号所属用户的客户端。
+        策略（产品确认）：全部展开——每封新邮件一条通知，不截断、不汇总。
+        items: 可选，[{message_cache_id, uid, subject, from_addr, ...}]；
+               为空时退化为仅账户/文件夹级单条通知（兼容旧调用）。
         """
-        # 先持久化通知到数据库（获取数据库中的通知ID）
-        notification_id = str(uuid.uuid4())
-        try:
-            notification = Notification(
-                id=notification_id,
-                user_uid=user_uid or "default",
-                account_id=account_id,
-                provider=provider,
-                email=email,
-                folder=folder,
-                is_read=False,
-                created_at=time.time(),
-            )
-            await create_notification(notification)
-        except Exception as e:
-            logger.warning("通知持久化失败: %s", e)
-            # 持久化失败时仍用UUID作为ID，前端可正常显示，只是刷新后丢失
+        from services.notification_dispatch import dispatch as dispatch_notification
 
-        # 广播消息（带上数据库中的通知ID，前端标记已读时需要）
-        message = json.dumps({
-            "type": "new_mail",
-            "notification_id": notification_id,
-            "account_id": account_id,
-            "folder": folder,
-            "provider": provider,
-            "email": email,
-        })
-        await self._broadcast(message, user_uid)
+        items = items or []
+        # 无明细时保持一条兼容通知（无 message_cache_id，前端只能进列表）
+        if not items:
+            items = [{
+                "account_id": account_id,
+                "folder": folder,
+                "uid": 0,
+                "message_cache_id": "",
+                "subject": "",
+                "from_addr": "",
+                "to_addr": "",
+                "cc": "",
+                "mail_date": "",
+                "body_preview": "",
+                "has_attachments": False,
+                "rfc_message_id": "",
+            }]
 
+        for item in items:
+            notification_id = str(uuid.uuid4())
+            subject = (item.get("subject") or "").strip()
+            message_text = subject if subject else "(无主题)"
+            try:
+                notification = Notification(
+                    id=notification_id,
+                    user_uid=user_uid or "default",
+                    account_id=account_id,
+                    provider=provider,
+                    email=email,
+                    folder=item.get("folder") or folder,
+                    is_read=False,
+                    created_at=time.time(),
+                    type="new_mail",
+                    message=message_text,
+                    message_cache_id=item.get("message_cache_id") or "",
+                    message_uid=int(item.get("uid") or 0),
+                    rfc_message_id=item.get("rfc_message_id") or "",
+                    subject=subject,
+                    from_addr=item.get("from_addr") or "",
+                    to_addr=item.get("to_addr") or "",
+                    cc=item.get("cc") or "",
+                    mail_date=item.get("mail_date") or "",
+                    body_preview=item.get("body_preview") or "",
+                    has_attachments=bool(item.get("has_attachments")),
+                    batch_count=1,
+                )
+                await create_notification(notification)
+            except Exception as e:
+                logger.warning("通知持久化失败: %s", e)
+
+            payload = {
+                "type": "new_mail",
+                "notification_id": notification_id,
+                "account_id": account_id,
+                "folder": item.get("folder") or folder,
+                "provider": provider,
+                "email": email,
+                "message_cache_id": item.get("message_cache_id") or "",
+                "message_uid": int(item.get("uid") or 0),
+                "rfc_message_id": item.get("rfc_message_id") or "",
+                "subject": subject,
+                "from_addr": item.get("from_addr") or "",
+                "to_addr": item.get("to_addr") or "",
+                "cc": item.get("cc") or "",
+                "mail_date": item.get("mail_date") or "",
+                "body_preview": item.get("body_preview") or "",
+                "has_attachments": bool(item.get("has_attachments")),
+                "batch_count": 1,
+                "message": message_text,
+            }
+            await self._broadcast(json.dumps(payload), user_uid)
+            try:
+                await dispatch_notification(payload)
+            except Exception as e:
+                logger.debug("notification dispatch hook failed: %s", e)
+
+    
     async def notify_schedule_result(
         self,
         user_uid: str,
@@ -441,12 +493,15 @@ class MailSyncService:
         """
         display = (name_map or {}).get(folder, folder)
         logger.info("账号 %s 文件夹 %s 检测到新邮件", account.email, display)
+        _sync_result = None
         try:
             from services.mail_cache import sync_folder_to_cache
-            new_count = await sync_folder_to_cache(account, folder)
+            _sync_result = await sync_folder_to_cache(account, folder)
+            new_count = int(_sync_result)
         except Exception as e:
-            logger.warning("缓存同步失败: %s", e)
+            logger.warning("sync failed in _handle_new_mail: %s", e)
             new_count = 0
+            _sync_result = None
 
         logger.info("账号 %s 文件夹 %s 缓存同步完成, new_count=%d, is_inbox=%s",
                     account.email, display, new_count, folder.upper() == "INBOX")
@@ -454,10 +509,11 @@ class MailSyncService:
         if folder.upper() == "INBOX" and new_count > 0:
             logger.info("账号 %s 发送新邮件通知: new_count=%d", account.email, new_count)
             await self.notify_clients(
-                account.id, folder,
-                provider=account.provider, email=account.email,
-                user_uid=account.user_uid,
-            )
+                            account.id, folder,
+                            provider=account.provider, email=account.email,
+                            user_uid=account.user_uid,
+                            items=(getattr(_sync_result, "new_items", []) if _sync_result is not None else []),
+                        )
 
         await self.refresh_clients(account.id, folder, user_uid=account.user_uid)
 
@@ -494,7 +550,8 @@ class MailSyncService:
                 stats_before = await get_folder_stats(account.id, folder)
                 cached_count_before = await get_cached_count(account.id, folder)
                 had_baseline = stats_before.get("updated_at", 0) > 0 or cached_count_before > 0
-                new_count = await sync_folder_to_cache(account, folder)
+                _sync_result = await sync_folder_to_cache(account, folder)
+                new_count = int(_sync_result)
                 if new_count > 0:
                     logger.info(
                         "账号 %s 文件夹 %s 补漏同步完成: 新增 %d 封, reason=%s",
@@ -505,6 +562,7 @@ class MailSyncService:
                             account.id, folder,
                             provider=account.provider, email=account.email,
                             user_uid=account.user_uid,
+                            items=getattr(_sync_result, "new_items", []),
                         )
                     await self.refresh_clients(account.id, folder, user_uid=account.user_uid)
             except Exception as e:

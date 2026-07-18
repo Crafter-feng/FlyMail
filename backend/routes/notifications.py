@@ -30,9 +30,20 @@ async def list_notifications(
                 "email": n.email,
                 "folder": n.folder,
                 "is_read": n.is_read,
-                "time": n.created_at * 1000,  # 转为毫秒时间戳，与前端一致
+                "time": n.created_at * 1000,
                 "type": n.type,
                 "message": n.message,
+                "message_cache_id": getattr(n, "message_cache_id", "") or "",
+                "message_uid": int(getattr(n, "message_uid", 0) or 0),
+                "rfc_message_id": getattr(n, "rfc_message_id", "") or "",
+                "subject": getattr(n, "subject", "") or "",
+                "from_addr": getattr(n, "from_addr", "") or "",
+                "to_addr": getattr(n, "to_addr", "") or "",
+                "cc": getattr(n, "cc", "") or "",
+                "mail_date": getattr(n, "mail_date", "") or "",
+                "body_preview": getattr(n, "body_preview", "") or "",
+                "has_attachments": bool(getattr(n, "has_attachments", False)),
+                "batch_count": int(getattr(n, "batch_count", 1) or 1),
             }
             for n in notifications
         ]
