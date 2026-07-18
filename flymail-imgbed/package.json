@@ -1,0 +1,14 @@
+﻿{
+  "name": "flymail-imgbed",
+  "version": "1.0.0",
+  "private": true,
+  "description": "飞邮通知图床：Cloudflare Worker + R2，供 Bark 图片推送使用",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

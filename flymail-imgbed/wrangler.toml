@@ -1,0 +1,18 @@
+﻿# 飞邮通知图床模板（每用户自建）
+# 部署：点击 Deploy to Cloudflare，或本地 wrangler deploy
+name = "flymail-imgbed"
+main = "src/index.js"
+compatibility_date = "2024-11-06"
+workers_dev = true
+
+# R2 绑定：部署向导会引导创建 bucket
+[[r2_buckets]]
+binding = "IMAGES"
+bucket_name = "flymail-imgbed"
+
+# 敏感值请用 secret 设置（Deploy 向导 / wrangler secret put）：
+#   UPLOAD_TOKEN  —— 上传与清理鉴权密钥（飞邮后台填写同一值）
+#
+# 可选 vars（一般不用改）：
+# [vars]
+# MAX_BYTES = "1572864"
