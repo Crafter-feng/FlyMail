@@ -41,7 +41,7 @@
   >
   <!-- 点击预览区域直接插入 -->
   <div class="sig-preset-click-area" @click="insertSigToEditor(preset.content_html)">
-  <div class="sig-preset-preview" v-html="preset.preview"></div>
+  <div class="sig-preset-preview" v-html="sanitizeHtml(preset.preview)"></div>
   <span class="sig-preset-name">{{ preset.name }}</span>
   </div>
   <!-- 自定义按钮：点击打开编辑对话框 -->
@@ -107,7 +107,7 @@
   </button>
   <!-- 点击区域：插入签名 -->
   <div class="sig-preset-click-area" @click="insertSigToEditor(sig.content_html)">
-  <div class="sig-preset-preview sig-user-preview" v-html="sig.content_html"></div>
+  <div class="sig-preset-preview sig-user-preview" v-html="sanitizeHtml(sig.content_html)"></div>
   <span class="sig-preset-name">{{ sig.name }}</span>
   </div>
   </div>
@@ -460,6 +460,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import api from '../utils/api';
+import { sanitizeHtml } from '../utils/sanitize';
 import { useMailStore } from '../stores/mail';
 import TiptapEditor from '../components/TiptapEditor.vue';
 import NasPathPicker from '../components/NasPathPicker.vue';
@@ -694,8 +695,10 @@ async function loadUserSigs() {
 
 /** 通过编辑器 ref 插入签名到光标位置 */
 function insertSigToEditor(contentHtml: string) {
-  if (editorRef.value) {
-  editorRef.value.insertText(contentHtml);
+  // C4: 插入签名前净化 HTML，防止 script/事件处理器注入编辑器
+  const safeHtml = sanitizeHtml(contentHtml);
+  if (editorRef.value && safeHtml) {
+  editorRef.value.insertText(safeHtml);
   }
   showSignaturePanel.value = false;
 }
@@ -705,7 +708,7 @@ async function saveCurrentAsSig() {
   const name = newSigName.value.trim();
   if (!name || !editorRef.value) return;
   try {
-  const htmlContent = editorRef.value.getHTML?.() || '';
+  const htmlContent = sanitizeHtml(editorRef.value.getHTML?.() || '');
   await api.post('/signatures', {
   name,
   content_html: htmlContent,
@@ -760,7 +763,7 @@ async function saveCustomizedSig() {
   const name = `${baseName}(自定义)`;
   await api.post('/signatures', {
   name,
-  content_html: editingSigHtml.value,
+  content_html: sanitizeHtml(editingSigHtml.value),
   is_default: userSigs.value.length === 0 ? true : undefined,
   });
   showCustomizeDialog.value = false;
@@ -788,7 +791,7 @@ async function saveEditedUserSig() {
   try {
   await api.put(`/signatures/${editingUserSig.value.id}`, {
   name: editingUserSigName.value.trim(),
-  content_html: editingUserSigHtml.value,
+  content_html: sanitizeHtml(editingUserSigHtml.value),
   is_default: editingUserSig.value.is_default,
   });
   showEditUserSigDialog.value = false;
@@ -833,7 +836,7 @@ onMounted(async () => {
   // 找到 is_default=1 的签名模板
   const defaultSig = data.signatures?.find((s: any) => s.is_default);
   if (defaultSig?.content_html) {
-  bodyHtml.value = '<p><br></p>' + defaultSig.content_html;
+  bodyHtml.value = '<p><br></p>' + sanitizeHtml(defaultSig.content_html);
   }
   } catch {
   // 签名加载失败不影响写邮件

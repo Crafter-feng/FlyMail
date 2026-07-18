@@ -182,13 +182,18 @@ async def get_user(request: Request):
 
 # ==================== 静态文件 & SPA ====================
 
+from utils.static_files import resolve_ui_file
+
+
 @app.get("/{full_path:path}")
 async def serve_spa(full_path: str):
-    """SPA 兜底：静态文件优先，其余返回 index.html"""
-    if full_path:
-        file_path = UI_DIR / full_path
-        if file_path.is_file():
-            return FileResponse(str(file_path))
+    """SPA 兜底：静态文件优先，其余返回 index.html。
+
+    C5：必须经 resolve_ui_file 约束在 UI_DIR 内，禁止 ../ 路径穿越读任意文件。
+    """
+    safe = resolve_ui_file(UI_DIR, full_path)
+    if safe is not None:
+        return FileResponse(str(safe))
     return FileResponse(str(UI_DIR / "index.html"))
 
 

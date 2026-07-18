@@ -234,7 +234,7 @@
   <div
   v-if="detailData.body_html || detailData.body_text"
   class="detail-content"
-  v-html="sanitizeHtml(detailData.body_html) || detailData.body_text"
+  v-html="renderMailBody(detailData.body_html, detailData.body_text)"
   @click="handleMailLinkClick"
   ></div>
   <div v-else class="body-empty">（无正文内容）</div>
@@ -268,7 +268,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import api from '../utils/api';
-import { sanitizeHtml, handleMailLinkClick } from '../utils/sanitize';
+import { renderMailBody, handleMailLinkClick } from '../utils/sanitize';
 import { providerIcon } from '../utils/provider';
 import { useBackupStore } from '../stores/backup';
 import { useUIStore } from '../stores/ui';

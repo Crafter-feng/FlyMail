@@ -37,6 +37,19 @@ def _get_scheduler():
     return scheduler
 
 
+
+def resolve_schedule_account(accounts, account_id: str):
+    """解析定时发送应使用的账号。
+
+    规则：
+    - 必须精确匹配 account_id
+    - 找不到时返回 None（绝不回退到列表第一项）
+    """
+    if not account_id:
+        return None
+    return next((a for a in accounts if getattr(a, "id", None) == account_id), None)
+
+
 async def _send_scheduled_email(
     user_uid: str,
     account_id: str,
@@ -66,7 +79,20 @@ async def _send_scheduled_email(
             )
             return
 
-        account = next((a for a in accounts if a.id == account_id), accounts[0])
+        # C6: 必须精确匹配预定发件账号，禁止回退到 accounts[0]
+        # （否则账号已删除/ID 失效时会用错邮箱发出邮件）
+        account = resolve_schedule_account(accounts, account_id)
+        if account is None:
+            logger.error(
+                "定时发送失败：发件账号不存在 account_id=%s user_uid=%s",
+                account_id, user_uid,
+            )
+            await _notify_schedule_result(
+                user_uid, account_id, provider, email, subject,
+                success=False, error_msg="发件账号不存在或已被删除",
+            )
+            return
+
         credentials = await ensure_token(account)
         safe_attachment_paths = validate_attachment_paths(user_uid, attachment_paths)
         sender = ProviderFactory.get_sender(account.provider)

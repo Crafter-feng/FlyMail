@@ -277,7 +277,7 @@
   <div class="detail-divider"></div>
   </div>
 
-  <div v-if="selectedMessage.body_html || selectedMessage.body_text" v-html="sanitizeHtml(selectedMessage.body_html) || selectedMessage.body_text" class="detail-content" @click="handleMailLinkClick"></div>
+  <div v-if="selectedMessage.body_html || selectedMessage.body_text" v-html="renderMailBody(selectedMessage.body_html, selectedMessage.body_text)" class="detail-content" @click="handleMailLinkClick"></div>
   <!-- 正文加载中：显示骨架屏 -->
   <div v-else class="body-skeleton">
   <div class="skeleton-line" style="width: 90%"></div>
@@ -364,7 +364,7 @@ import { useMailStore } from '../stores/mail';
 import { useUIStore } from '../stores/ui';
 import api from '../utils/api';
 import { providerIcon } from '../utils/provider';
-import { sanitizeHtml, handleMailLinkClick } from '../utils/sanitize';
+import { renderMailBody, handleMailLinkClick } from '../utils/sanitize';
 import { getInitial, getAvatarColor, formatDate, formatDetailDate, formatFileSize, extractEmails, extractName, downloadAttachment as downloadAttachmentFile, saveAttachmentToNas, formatAddressList } from '../utils/mail-helpers';
 import { exportMailToPDF } from '../utils/export-pdf';
 import type { Attachment, Message } from '../types/mail';

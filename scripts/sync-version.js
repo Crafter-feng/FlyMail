@@ -5,6 +5,7 @@
  * - package.json（根目录）
  * - frontend/package.json
  * - README.md 中的 version badge
+ * - flymail/manifest（飞牛应用版本）
  *
  * 用法：node scripts/sync-version.js
  */
@@ -51,6 +52,36 @@ if (fs.existsSync(readmePath)) {
   } else {
     console.log('  · README.md 无需更新（未找到 version badge 或已一致）');
   }
+}
+
+
+// 同步到飞牛应用 manifest（应用商店/安装包版本号）
+const manifestPath = path.join(rootDir, 'flymail', 'manifest');
+if (fs.existsSync(manifestPath)) {
+  let manifest = fs.readFileSync(manifestPath, 'utf-8');
+  const nextManifest = manifest.replace(
+    /^version\s*=\s*\S+/m,
+    (line) => line.replace(/=\s*\S+/, `= ${version}`),
+  );
+  if (nextManifest !== manifest) {
+    fs.writeFileSync(manifestPath, nextManifest, 'utf-8');
+    console.log('  ✓ flymail/manifest');
+  } else if (/^version\s*=\s*/m.test(manifest)) {
+    // 可能已一致：再校验是否等于目标版本
+    const m = manifest.match(/^version\s*=\s*(\S+)/m);
+    if (m && m[1] === version) {
+      console.log('  · flymail/manifest 已一致');
+    } else {
+      console.error('  ✗ flymail/manifest 版本行无法更新');
+      process.exit(1);
+    }
+  } else {
+    console.error('  ✗ flymail/manifest 未找到 version 字段');
+    process.exit(1);
+  }
+} else {
+  console.error('  ✗ 未找到 flymail/manifest');
+  process.exit(1);
 }
 
 console.log('版本号同步完成');

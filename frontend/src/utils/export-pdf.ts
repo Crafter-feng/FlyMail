@@ -25,7 +25,7 @@
  * │  │
  * └─────────────────────────────┘
  */
-import { sanitizeHtml } from './sanitize'
+import { renderMailBody, escapeHtml } from './sanitize'
 import { formatDetailDate, formatAddressList } from './mail-helpers'
 import type { Message } from '../types/mail'
 
@@ -40,7 +40,7 @@ export async function exportMailToPDF(msg: Message): Promise<void> {
   // 构建邮件头部 HTML（主题 + 元数据表格）
   const headerHtml = buildMailHeader(msg)
   // 获取净化后的正文 HTML，优先 html，缺失时回退到纯文本
-  const bodyHtml = sanitizeHtml(msg.body_html) || escapeHtml(msg.body_text || '')
+  const bodyHtml = renderMailBody(msg.body_html, msg.body_text)
 
   // 组装完整的 HTML 文档（包含打印样式）
   const fullHtml = buildFullHtml(msg, headerHtml, bodyHtml)
@@ -254,17 +254,4 @@ function waitForImages(container: HTMLElement | null): Promise<void> {
   }
   })
   })
-}
-
-/**
- * HTML 转义
- *
- * 防止邮件头部信息中的特殊字符（< > & "）破坏 HTML 结构
- */
-function escapeHtml(str: string): string {
-  return str
-  .replace(/&/g, '&amp;')
-  .replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;')
 }
