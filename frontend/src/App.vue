@@ -1651,7 +1651,7 @@ watch(showNotificationPanel, (open) => {
   animation: notif-marquee 8s linear infinite;
 }
 
-/* marquee 动画：开头停顿2秒 → 滚动 → 末尾停顿2秒 → 循环
+/* marquee 动画：总时长 8s；开头短暂停顿 → 滚动 → 末尾短暂停顿 → 循环（新邮件/备份通知共用）
  * 滚动距离使用 CSS 变量 --marquee-distance（像素值，由 JS 检测溢出后设置）
  * 这样可以精确表达"文字宽度-容器宽度"的位移 */
 @keyframes notif-marquee {
