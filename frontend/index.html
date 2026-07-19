@@ -2,8 +2,18 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>飞邮 FlyMail</title>
+  <!-- PWA：浏览器 Web App Manifest（与飞牛打包 flymail/manifest 无关） -->
+  <link rel="manifest" href="/app/flymail/manifest.webmanifest">
+  <meta name="theme-color" content="#007AFF">
+  <meta name="mobile-web-app-capable" content="yes">
+  <!-- iOS「添加到主屏幕」：独立显示；本阶段不引入 Service Worker，不改鉴权 -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="飞邮">
+  <link rel="apple-touch-icon" href="/app/flymail/icons/icon-192.png">
+  <link rel="icon" type="image/png" href="/app/flymail/icons/icon-192.png">
 </head>
 <body>
   <div id="app"></div>

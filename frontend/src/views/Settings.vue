@@ -240,6 +240,455 @@
   </transition>
   </div>
 
+
+  <!-- ==================== 第三方通知设置（可折叠） ==================== -->
+  <div class="provider-card">
+  <button class="gmail-toggle notify-toggle" @click="notifyOpen = !notifyOpen">
+  <div class="gmail-toggle-left">
+  <div class="gmail-toggle-icon notify-toggle-icon">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+  <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+  </svg>
+  </div>
+  <div class="gmail-toggle-text">
+  <span class="gmail-toggle-title">通知设置</span>
+  <span class="gmail-toggle-desc">推送到 Bark、Telegram、Webhook 等</span>
+  </div>
+  </div>
+  <svg class="guide-arrow" :class="{ open: notifyOpen }" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="6 9 12 15 18 9"/>
+  </svg>
+  </button>
+
+  <transition name="expand">
+  <div v-if="notifyOpen" class="card-body">
+  <!-- 全局设置 -->
+  <div class="notify-section" :class="{ disabled: false }">
+  <div class="field proxy-field">
+  <label class="field-label proxy-label">
+  <label class="toggle-switch">
+  <input type="checkbox" v-model="notifyForm.enabled" />
+  <span class="toggle-slider"></span>
+  </label>
+  <span>启用第三方通知</span>
+  </label>
+  <span class="field-hint">开启后，新邮件将按下方配置推送到外部渠道。</span>
+  </div>
+
+  <!-- 免打扰 + 通知模式：同一行左右排布 -->
+  <div class="notify-inline-row" :class="{ 'notify-dim': !notifyForm.enabled }">
+  <div class="field notify-inline-field notify-inline-dnd">
+  <label class="field-label">免打扰时段</label>
+  <div class="notify-dnd-row">
+  <input class="input notify-time" type="time" v-model="notifyForm.dnd_start" :disabled="!notifyForm.enabled" />
+  <span class="notify-dnd-sep">至</span>
+  <input class="input notify-time" type="time" v-model="notifyForm.dnd_end" :disabled="!notifyForm.enabled" />
+  </div>
+  <span class="field-hint">默认 21:00–07:00（跨午夜）；起止相同=关闭免打扰</span>
+  </div>
+
+  <div class="field notify-inline-field notify-inline-mode">
+  <label class="field-label">通知模式</label>
+  <div class="notify-segment" role="group" aria-label="通知模式">
+  <button
+  type="button"
+  class="notify-segment-item"
+  :class="{ active: notifyForm.mode === 'text' }"
+  :disabled="!notifyForm.enabled"
+  @click="notifyForm.mode = 'text'"
+  >文字</button>
+  <button
+  type="button"
+  class="notify-segment-item"
+  :class="{ active: notifyForm.mode === 'image' }"
+  :disabled="!notifyForm.enabled"
+  @click="notifyForm.mode = 'image'"
+  >图片</button>
+  </div>
+  <span class="field-hint">图片：Telegram / Webhook 直传；Bark 用下方图床</span>
+  </div>
+  </div>
+
+  <!-- 全局 Cloudflare 图床：图片模式且需公网 URL 的渠道共用 -->
+  <div class="notify-imgbed" :class="{ 'notify-dim': !notifyForm.enabled }">
+  <div class="notify-imgbed-head">
+  <div class="notify-imgbed-title-row">
+  <div class="notify-imgbed-title">Cloudflare 图床</div>
+  <a
+  class="cf-deploy-btn"
+  :href="notifyForm.imgbed_deploy_url || defaultImgbedDeployUrl"
+  target="_blank"
+  rel="noopener noreferrer"
+  title="Deploy to Cloudflare"
+  >
+  <svg class="cf-deploy-cloud" viewBox="0 0 16 10" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <path fill="#F6821F" d="M12.6 4.2c-.15-1.55-1.45-2.75-3.05-2.75-.8 0-1.52.3-2.05.8C6.95 1.15 5.75.25 4.35.25 2.35.25.75 1.8.65 3.75.15 3.95-.1 4.45-.1 5.05c0 1.2 1 2.2 2.2 2.2h9.1c1.05 0 1.9-.85 1.9-1.9 0-1-.75-1.85-1.65-2.05.05-.03.1-.06.15-.1z"/>
+  <path fill="#FBAD41" d="M11.55 4.55c-.1-1.05-.95-1.85-2.05-1.85-.55 0-1.05.2-1.4.55-.4-.7-1.15-1.15-2.05-1.15-1.3 0-2.35 1.05-2.4 2.35-.75.2-1.3.85-1.3 1.65 0 .95.8 1.75 1.75 1.75h7.05c.85 0 1.55-.7 1.55-1.55 0-.8-.6-1.45-1.35-1.55.05-.07.1-.14.2-.2z"/>
+  </svg>
+  <span class="cf-deploy-text">Deploy to Cloudflare</span>
+  </a>
+  </div>
+  <span class="field-hint notify-imgbed-desc">图片通知模式需要部署 Cloudflare 图床（Telegram / Webhook 除外）</span>
+  </div>
+  <div class="notify-inline-row notify-imgbed-fields">
+  <div class="field notify-inline-field">
+  <label class="field-label">图床地址</label>
+  <input
+  class="input"
+  type="text"
+  v-model="notifyForm.imgbed.base_url"
+  placeholder="https://flymail-imgbed.xxx.workers.dev"
+  :disabled="!notifyForm.enabled"
+  />
+  </div>
+  <div class="field notify-inline-field">
+  <label class="field-label">上传密钥</label>
+  <div class="notify-secret-row notify-secret-row-full">
+  <input
+  class="input"
+  :type="notifyImgbedTokenVisible ? 'text' : 'password'"
+  v-model="notifyForm.imgbed.upload_token"
+  placeholder="Cloudflare UPLOAD_TOKEN"
+  :disabled="!notifyForm.enabled"
+  autocomplete="off"
+  />
+  <button type="button" class="btn-secret-toggle" @click="notifyImgbedTokenVisible = !notifyImgbedTokenVisible" :title="notifyImgbedTokenVisible ? '隐藏' : '显示'">
+  <svg v-if="!notifyImgbedTokenVisible" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+  <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+  </button>
+  </div>
+  </div>
+  </div>
+  <div class="notify-test-row">
+  <button
+  type="button"
+  class="check-proxy-btn"
+  :disabled="!notifyForm.enabled || notifyImgbedBusy || !notifyForm.imgbed.base_url.trim() || !notifyForm.imgbed.upload_token.trim()"
+  @click="testImgbed"
+  >
+  <svg v-if="!notifyImgbedBusy || notifyImgbedAction !== 'test'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+  <svg v-else class="spin-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg>
+  <span>{{ notifyImgbedBusy && notifyImgbedAction === 'test' ? '测试中' : '测试上传' }}</span>
+  </button>
+  <button
+  type="button"
+  class="check-proxy-btn notify-purge-btn"
+  :disabled="!notifyForm.enabled || notifyImgbedBusy || !notifyForm.imgbed.base_url.trim() || !notifyForm.imgbed.upload_token.trim()"
+  @click="purgeImgbed"
+  >
+  <svg v-if="!notifyImgbedBusy || notifyImgbedAction !== 'purge'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+  <svg v-else class="spin-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg>
+  <span>{{ notifyImgbedBusy && notifyImgbedAction === 'purge' ? '清理中' : '清理图床' }}</span>
+  </button>
+  <transition name="fade">
+  <span v-if="notifyImgbedMsg" class="status-msg" :class="notifyImgbedOk ? 'success' : 'error'">
+  {{ notifyImgbedMsg }}
+  <a v-if="notifyImgbedOk && notifyImgbedPreviewUrl" :href="notifyImgbedPreviewUrl" target="_blank" rel="noopener" class="notify-imgbed-link">查看图片</a>
+  </span>
+  </transition>
+  </div>
+  </div>
+
+  </div>
+
+  <!-- 渠道：横向 Tab（对齐邮件配置教程） -->
+  <div class="notify-channels">
+  <div class="guide-tabs notify-guide-tabs">
+  <button
+  type="button"
+  class="guide-tab"
+  :class="{ active: notifyChannelTab === 'bark' }"
+  @click="notifyChannelTab = 'bark'"
+  >
+  <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="16" height="16">
+  <path d="M198.567436 0h624.044321c104.527424 21.308277 170.715834 83.712709 198.559557 187.213296v646.736843c-26.476499 98.332366-88.880931 160.736798-187.213296 187.213296h-646.736842c-103.500587-27.843723-165.905019-94.032133-187.213297-198.559557v-624.044321c22.692521-109.678626 88.880931-175.867036 198.559557-198.559557z" fill="#FF3A2F" opacity=".996"/>
+  <path d="M187.221176 351.734072a1769.279114 1769.279114 0 0 1 158.847645 48.221607 1346.738704 1346.738704 0 0 1 2.836565 212.742382 3639.029363 3639.029363 0 0 1-153.174515 56.731302c-10.733562-1.571457-18.295845-7.244587-22.692521-17.019391a3546.948787 3546.948787 0 0 1 0-283.656509 59.687003 59.687003 0 0 0 14.182826-17.019391z" fill="#FFFAFA"/>
+  <path d="M805.592367 357.407202c16.253518-2.524543 30.436343 1.253762 42.548476 11.346261 3.783978 96.443213 3.783978 192.886427 0 289.329639-5.423512 7.908343-12.985795 11.692321-22.69252 11.346261a862.542715 862.542715 0 0 1-147.501385-45.385042 2048.397119 2048.397119 0 0 1 0-215.578947 1786.877163 1786.877163 0 0 1 127.645429-51.058172z" fill="#FFFCFC"/>
+  <path d="M136.163004 402.792244a871.557319 871.557319 0 0 1 0 198.559557c-24.530615-52.856554-49.117961-105.803878-73.750693-158.847646 0.164521-8.679889 3.942825-15.294759 11.346261-19.855956a239.973407 239.973407 0 0 1 62.404432-19.855955zM885.01619 419.811634a6240.102825 6240.102825 0 0 1 73.750692 161.684211 35.701008 35.701008 0 0 1-5.67313 17.01939 1689.157496 1689.157496 0 0 0-73.750693 25.529086c-1.860787-69.08738 0.028366-137.164942 5.673131-204.232687z" fill="#FFFAF9"/>
+  <path d="M646.744721 442.504155h-266.637119v141.828255h266.637119a3271.246006 3271.246006 0 0 1-272.310249 5.67313v-153.174515c91.762881-1.872133 182.532964 0.022693 272.310249 5.67313z" fill="#FFB9B4"/>
+  <path d="M646.744721 442.504155v141.828255h-266.637119v-141.828255h266.637119z" fill="#FFFEFD"/>
+  <path d="M136.163004 402.792244c0.340388-3.08051 2.22954-4.969662 5.67313-5.67313a973.679335 973.679335 0 0 1 0 209.905817c-3.44359-0.703468-5.332742-2.59262-5.67313-5.67313a871.557319 871.557319 0 0 0 0-198.559557z" fill="#FF9993"/>
+  <path d="M885.01619 419.811634c-5.644765 67.067745-7.533917 135.145307-5.673131 204.232687-7.516898-69.059014-7.516898-139.025729 0-209.905817 3.44359 0.703468 5.332742 2.59262 5.673131 5.67313z" fill="#FF857E"/>
+  </svg>
+  <span class="tab-label">Bark</span>
+  </button>
+  <button
+  type="button"
+  class="guide-tab"
+  :class="{ active: notifyChannelTab === 'telegram' }"
+  @click="notifyChannelTab = 'telegram'"
+  >
+  <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="16" height="16">
+  <path d="M679.424 746.862l84.005-395.996c7.424-34.852-12.581-48.567-35.438-40.009L234.277 501.138c-33.72 13.13-33.134 32-5.706 40.558l126.282 39.424 293.156-184.576c13.714-9.143 26.295-3.986 16.018 5.157L426.898 615.973l-9.143 130.304c13.13 0 18.871-5.706 25.71-12.581l61.696-59.429 128 94.282c23.442 13.129 40.01 6.29 46.3-21.724zM1024 512c0 282.843-229.157 512-512 512S0 794.843 0 512 229.157 0 512 0s512 229.157 512 512z" fill="#1296DB"/>
+  </svg>
+  <span class="tab-label">Telegram</span>
+  </button>
+  <button
+  type="button"
+  class="guide-tab"
+  :class="{ active: notifyChannelTab === 'webhook' }"
+  @click="notifyChannelTab = 'webhook'"
+  >
+  <svg viewBox="0 0 1126 1024" xmlns="http://www.w3.org/2000/svg" width="16" height="16">
+  <path d="M475.854144 913.399911c-83.761992 116.529989-247.395976 145.763986-365.666965 64.715993-117.655989-81.099992-145.252986-242.480976-62.564994-360.137964a264.700974 264.700974 0 0 1 205.51498-111.460989l2.918 80.484992a182.679982 182.679982 0 0 0-135.422987 76.491992c-57.445994 81.049992-39.679996 190.154981 39.064996 244.733976 79.154992 54.015995 189.949981 33.279997 247.344976-47.205995a186.468982 186.468982 0 0 0 32.204997-81.048992v-56.881995l320.252969-2.303999 3.941999-6.144a109.566989 109.566989 0 0 1 148.069986-40.498996 105.82999 105.82999 0 0 1 39.063996 146.276986 110.385989 110.385989 0 0 1-148.631985 39.935996 99.68499 99.68499 0 0 1-47.614996-57.496994l-233.572977 1.176999A278.269973 278.269973 0 0 1 475.854144 913.399911z m417.787959-401.659961c145.252986 17.406998 248.522976 145.149986 230.756977 285.231972-17.766998 140.644986-149.809985 240.124977-294.959971 222.717978a266.083974 266.083974 0 0 1-196.862981-124.261987l71.115993-40.446996a185.546982 185.546982 0 0 0 133.118987 81.611992c100.45299 11.775999 189.335982-55.141995 201.367981-148.989986 12.082999-94.053991-59.032994-180.017982-158.359985-191.844981a199.677981 199.677981 0 0 0-87.807991 10.085999l-48.639996 24.575997-148.119985-268.285973h-12.645999c-60.107994-1.69-107.569989-50.789995-106.18699-109.71999 1.74-58.469994 53.349995-104.08899 113.662989-101.78499 60.260994 3.328 108.029989 51.199995 106.23899 109.71999a104.03699 104.03699 0 0 1-26.419997 64.665993l109.003989 197.373981a278.524973 278.524973 0 0 1 114.686989-10.649999zM348.931156 358.651965A255.126975 255.126975 0 0 1 484.968143 20.119998c133.220987-55.140995 287.023972 7.321999 344.469966 139.519986a254.205975 254.205975 0 0 1-11.467999 228.911978l-71.218993-40.447996c24.063998-45.566996 28.056997-101.21999 5.12-153.597985-39.064996-90.008991-142.948986-133.374987-231.933978-96.766991-89.598991 37.119996-129.739987 140.644986-90.622991 230.653978 15.973998 37.119996 43.007996 65.790994 75.774993 84.939992l22.322997 11.775998-176.125982 280.777973c1.74 2.867 3.942 6.143999 5.733999 10.649999 28.057997 51.249995 8.652999 115.914989-44.235996 143.408986-52.274995 27.544997-118.269988 7.372999-146.942985-45.515996a105.87999 105.87999 0 0 1 44.236995-144.536985 102.91099 102.91099 0 0 1 70.654994-9.522999L413.34015 448.302956a248.829976 248.829976 0 0 1-64.409994-89.599991z" fill="#6366F1"/>
+  </svg>
+  <span class="tab-label">Webhook</span>
+  </button>
+  </div>
+
+  <div class="notify-channel-panel">
+  <!-- Bark -->
+  <div v-if="notifyChannelTab === 'bark'" class="guide-panel">
+  <div class="field proxy-field">
+  <label class="field-label proxy-label">
+  <label class="toggle-switch">
+  <input type="checkbox" v-model="notifyForm.bark.enabled" :disabled="!notifyForm.enabled" />
+  <span class="toggle-slider"></span>
+  </label>
+  <span>启用 Bark</span>
+  </label>
+  </div>
+  <div class="notify-inline-row" :class="{ 'notify-dim': !notifyForm.bark.enabled || !notifyForm.enabled }">
+  <div class="field notify-inline-field">
+  <label class="field-label">Server</label>
+  <input
+  class="input"
+  type="text"
+  v-model="notifyForm.bark.server"
+  placeholder="https://api.day.app"
+  :disabled="!notifyForm.enabled || !notifyForm.bark.enabled"
+  />
+  <span class="field-hint">须与 Bark App 服务器一致；默认 api.day.app</span>
+  </div>
+  <div class="field notify-inline-field">
+  <label class="field-label">Device Key</label>
+  <div class="notify-secret-row notify-secret-row-full">
+  <input
+  class="input"
+  :type="notifyBarkKeyVisible ? 'text' : 'password'"
+  v-model="notifyForm.bark.device_key"
+  placeholder="Bark App 中复制 Device Key"
+  :disabled="!notifyForm.enabled || !notifyForm.bark.enabled"
+  autocomplete="off"
+  />
+  <button type="button" class="btn-secret-toggle" @click="notifyBarkKeyVisible = !notifyBarkKeyVisible" :title="notifyBarkKeyVisible ? '隐藏' : '显示'">
+  <svg v-if="!notifyBarkKeyVisible" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+  <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+  </button>
+  </div>
+  </div>
+  </div>
+
+  <div class="notify-test-row">
+  <button
+  type="button"
+  class="check-proxy-btn"
+  :disabled="notifyTesting || !notifyForm.bark.device_key.trim()"
+  @click="testNotifyChannel('bark')"
+  >
+  <svg v-if="!notifyTesting || notifyTestingChannel !== 'bark'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/>
+  </svg>
+  <svg v-else class="spin-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg>
+  <span>{{ notifyTesting && notifyTestingChannel === 'bark' ? '测试中' : '发送测试' }}</span>
+  </button>
+  <transition name="fade">
+  <span v-if="notifyTestMsg && notifyTestingChannel === 'bark'" class="status-msg" :class="notifyTestOk ? 'success' : 'error'">
+  {{ notifyTestMsg }}
+  </span>
+  </transition>
+  </div>
+  </div>
+
+  <!-- Telegram -->
+  <div v-if="notifyChannelTab === 'telegram'" class="guide-panel">
+  <div class="notify-inline-row notify-toggle-pair">
+  <div class="field proxy-field notify-inline-field">
+  <label class="field-label proxy-label">
+  <label class="toggle-switch">
+  <input type="checkbox" v-model="notifyForm.telegram.enabled" :disabled="!notifyForm.enabled" />
+  <span class="toggle-slider"></span>
+  </label>
+  <span>启用 Telegram</span>
+  </label>
+  </div>
+  <div class="field proxy-field notify-inline-field" :class="{ 'notify-dim': !notifyForm.telegram.enabled || !notifyForm.enabled }">
+  <label class="field-label proxy-label">
+  <label class="toggle-switch">
+  <input type="checkbox" v-model="notifyForm.telegram.use_gmail_proxy" :disabled="!notifyForm.enabled || !notifyForm.telegram.enabled" />
+  <span class="toggle-slider"></span>
+  </label>
+  <span>使用 Gmail 网络代理</span>
+  </label>
+  </div>
+  </div>
+  <span
+  v-if="notifyForm.telegram.use_gmail_proxy && !form.gmail_proxy_enabled && notifyForm.telegram.enabled"
+  class="field-hint notify-warn-hint"
+  >当前未启用 Gmail 网络代理，请先在顶部卡片配置并测试连通。</span>
+  <div class="notify-inline-row" :class="{ 'notify-dim': !notifyForm.telegram.enabled || !notifyForm.enabled }">
+  <div class="field notify-inline-field">
+  <label class="field-label">Bot Token</label>
+  <div class="notify-secret-row notify-secret-row-full">
+  <input
+  class="input"
+  :type="notifyTgTokenVisible ? 'text' : 'password'"
+  v-model="notifyForm.telegram.bot_token"
+  placeholder="123456:ABC..."
+  :disabled="!notifyForm.enabled || !notifyForm.telegram.enabled"
+  autocomplete="off"
+  />
+  <button type="button" class="btn-secret-toggle" @click="notifyTgTokenVisible = !notifyTgTokenVisible">
+  <svg v-if="!notifyTgTokenVisible" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+  <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+  </button>
+  </div>
+  </div>
+  <div class="field notify-inline-field">
+  <label class="field-label">Chat ID</label>
+  <input
+  class="input"
+  type="text"
+  v-model="notifyForm.telegram.chat_id"
+  placeholder="用户 / 群 / 频道 ID"
+  :disabled="!notifyForm.enabled || !notifyForm.telegram.enabled"
+  />
+  </div>
+  </div>
+  <div class="notify-test-row">
+  <button
+  type="button"
+  class="check-proxy-btn"
+  :disabled="notifyTesting || !notifyForm.telegram.bot_token.trim() || !notifyForm.telegram.chat_id.trim()"
+  @click="testNotifyChannel('telegram')"
+  >
+  <svg v-if="!notifyTesting || notifyTestingChannel !== 'telegram'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/>
+  </svg>
+  <svg v-else class="spin-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg>
+  <span>{{ notifyTesting && notifyTestingChannel === 'telegram' ? '测试中' : '发送测试' }}</span>
+  </button>
+  <transition name="fade">
+  <span v-if="notifyTestMsg && notifyTestingChannel === 'telegram'" class="status-msg" :class="notifyTestOk ? 'success' : 'error'">
+  {{ notifyTestMsg }}
+  </span>
+  </transition>
+  </div>
+  </div>
+
+  <!-- Webhook -->
+  <div v-if="notifyChannelTab === 'webhook'" class="guide-panel">
+  <div class="notify-inline-row notify-toggle-pair">
+  <div class="field proxy-field notify-inline-field">
+  <label class="field-label proxy-label">
+  <label class="toggle-switch">
+  <input type="checkbox" v-model="notifyForm.webhook.enabled" :disabled="!notifyForm.enabled" />
+  <span class="toggle-slider"></span>
+  </label>
+  <span>启用 Webhook</span>
+  </label>
+  </div>
+  <div class="field proxy-field notify-inline-field" :class="{ 'notify-dim': !notifyForm.webhook.enabled || !notifyForm.enabled }">
+  <label class="field-label proxy-label">
+  <label class="toggle-switch">
+  <input type="checkbox" v-model="notifyForm.webhook.use_gmail_proxy" :disabled="!notifyForm.enabled || !notifyForm.webhook.enabled" />
+  <span class="toggle-slider"></span>
+  </label>
+  <span>使用 Gmail 网络代理</span>
+  </label>
+  </div>
+  </div>
+  <span
+  v-if="notifyForm.webhook.use_gmail_proxy && !form.gmail_proxy_enabled && notifyForm.webhook.enabled"
+  class="field-hint notify-warn-hint"
+  >当前未启用 Gmail 网络代理，请先在顶部卡片配置并测试连通。</span>
+  <div class="notify-inline-row" :class="{ 'notify-dim': !notifyForm.webhook.enabled || !notifyForm.enabled }">
+  <div class="field notify-inline-field">
+  <label class="field-label">URL</label>
+  <input
+  class="input"
+  type="text"
+  v-model="notifyForm.webhook.url"
+  placeholder="https://example.com/hook"
+  :disabled="!notifyForm.enabled || !notifyForm.webhook.enabled"
+  />
+  <span class="field-hint">POST JSON；HTTP 2xx 视为成功</span>
+  </div>
+  <div class="field notify-inline-field">
+  <label class="field-label">Bearer Token（可选）</label>
+  <div class="notify-secret-row notify-secret-row-full">
+  <input
+  class="input"
+  :type="notifyWhSecretVisible ? 'text' : 'password'"
+  v-model="notifyForm.webhook.secret"
+  placeholder="留空则不带鉴权头"
+  :disabled="!notifyForm.enabled || !notifyForm.webhook.enabled"
+  autocomplete="off"
+  />
+  <button type="button" class="btn-secret-toggle" @click="notifyWhSecretVisible = !notifyWhSecretVisible">
+  <svg v-if="!notifyWhSecretVisible" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+  <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+  </button>
+  </div>
+  </div>
+  </div>
+  <div class="notify-test-row">
+  <button
+  type="button"
+  class="check-proxy-btn"
+  :disabled="notifyTesting || !notifyForm.webhook.url.trim()"
+  @click="testNotifyChannel('webhook')"
+  >
+  <svg v-if="!notifyTesting || notifyTestingChannel !== 'webhook'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/>
+  </svg>
+  <svg v-else class="spin-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg>
+  <span>{{ notifyTesting && notifyTestingChannel === 'webhook' ? '测试中' : '发送测试' }}</span>
+  </button>
+  <transition name="fade">
+  <span v-if="notifyTestMsg && notifyTestingChannel === 'webhook'" class="status-msg" :class="notifyTestOk ? 'success' : 'error'">
+  {{ notifyTestMsg }}
+  </span>
+  </transition>
+  </div>
+  </div>
+  </div>
+  </div>
+
+  <div class="save-bar">
+  <button class="btn btn-primary btn-save" @click="saveNotifySettings" :disabled="notifySaving">
+  <svg v-if="!notifySaving" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
+  </svg>
+  <span v-if="notifySaving" class="saving-text">
+  <span class="saving-dot"></span>
+  保存中...
+  </span>
+  <span v-else>保存设置</span>
+  </button>
+  <transition name="fade">
+  <span v-if="notifySuccess" class="status-msg success">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="20 6 9 17 4 12"/>
+  </svg>
+  保存成功
+  </span>
+  </transition>
+  <transition name="fade">
+  <span v-if="notifyError" class="status-msg error">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+  </svg>
+  {{ notifyError }}
+  </span>
+  </transition>
+  </div>
+
+  </div>
+  </transition>
+  </div>
+
   <!-- ==================== 配置教程（可折叠） ==================== -->
   <div class="guide-section">
   <!-- 折叠按钮 -->
@@ -411,6 +860,31 @@
   </transition>
 
   <!-- 备份目录选择器（复用 NasPathPicker） -->
+  <!-- 清理图床：项目内确认弹窗（非浏览器原生） -->
+  <Teleport to="body">
+  <transition name="fade">
+  <div
+  v-if="notifyPurgeConfirmVisible"
+  class="notify-confirm-overlay"
+  @click.self="notifyPurgeConfirmVisible = false"
+  >
+  <div class="notify-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="notify-purge-title">
+  <div class="notify-confirm-icon" aria-hidden="true">
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+  </svg>
+  </div>
+  <h3 id="notify-purge-title" class="notify-confirm-title">清理图床</h3>
+  <p class="notify-confirm-message">将删除图床中的全部图片，此操作不可恢复。确定继续？</p>
+  <div class="notify-confirm-actions">
+  <button type="button" class="btn btn-secondary" @click="notifyPurgeConfirmVisible = false">取消</button>
+  <button type="button" class="btn btn-danger" :disabled="notifyImgbedBusy" @click="confirmPurgeImgbed">确认清理</button>
+  </div>
+  </div>
+  </div>
+  </transition>
+  </Teleport>
+
   <NasPathPicker
   v-model="showBackupPathPicker"
   mode="dir"
@@ -426,6 +900,9 @@ import api from '../utils/api';
 import { providerIcon } from '../utils/provider';
 import type { BackupAccount, BackupDir } from '../types/mail';
 import NasPathPicker from '../components/NasPathPicker.vue';
+import { useUIStore } from '../stores/ui';
+
+const ui = useUIStore();
 
 // ==================== 教程数据 ====================
 
@@ -553,6 +1030,7 @@ async function testProxy() {
 onMounted(() => {
   loadSettingsData();
   loadBackupSettings();
+  loadNotifySettings();
   // 监听点击事件，实现下拉面板点击外部关闭
   document.addEventListener('click', handleBackupClickOutside);
 });
@@ -584,6 +1062,252 @@ async function saveSettings() {
 }
 
 // ==================== 邮件备份设置逻辑 ====================
+
+
+// ==================== 第三方通知设置 ====================
+
+const notifyOpen = ref(false);
+const notifyChannelTab = ref<'bark' | 'telegram' | 'webhook'>('bark');
+const notifyBarkKeyVisible = ref(false);
+const notifyTgTokenVisible = ref(false);
+const notifyWhSecretVisible = ref(false);
+const notifyImgbedTokenVisible = ref(false);
+const notifyImgbedBusy = ref(false);
+const notifyImgbedAction = ref('');
+const notifyImgbedMsg = ref('');
+const notifyImgbedOk = ref(false);
+const notifyImgbedPreviewUrl = ref('');
+const notifyPurgeConfirmVisible = ref(false);
+const defaultImgbedDeployUrl = 'https://deploy.workers.cloudflare.com/?url=https://github.com/DinDing1/FlyMail/tree/main/flymail-imgbed';
+const notifySaving = ref(false);
+const notifySuccess = ref(false);
+const notifyError = ref('');
+const notifyTesting = ref(false);
+const notifyTestingChannel = ref('');
+const notifyTestMsg = ref('');
+const notifyTestOk = ref(false);
+
+const notifyForm = ref({
+  enabled: false,
+  dnd_start: '21:00',
+  dnd_end: '07:00',
+  mode: 'text' as 'text' | 'image',
+  bark: {
+    enabled: false,
+    server: 'https://api.day.app',
+    device_key: '',
+  },
+  telegram: {
+    enabled: false,
+    bot_token: '',
+    chat_id: '',
+    use_gmail_proxy: false,
+  },
+  webhook: {
+    enabled: false,
+    url: '',
+    secret: '',
+    use_gmail_proxy: false,
+  },
+  imgbed: {
+    base_url: '',
+    upload_token: '',
+  },
+  imgbed_deploy_url: defaultImgbedDeployUrl,
+});
+
+
+
+
+/** 加载第三方通知配置 */
+async function loadNotifySettings() {
+  try {
+    const res = await api.get('/notify/settings') as any;
+    const data = res?.data || res || {};
+    notifyForm.value = {
+      enabled: !!data.enabled,
+      dnd_start: data.dnd_start || '21:00',
+      dnd_end: data.dnd_end || '07:00',
+      mode: data.mode === 'image' ? 'image' : 'text',
+      bark: {
+        enabled: !!(data.bark && data.bark.enabled),
+        server: (data.bark && data.bark.server) || 'https://api.day.app',
+        device_key: (data.bark && data.bark.device_key) || '',
+      },
+      telegram: {
+        enabled: !!(data.telegram && data.telegram.enabled),
+        bot_token: (data.telegram && data.telegram.bot_token) || '',
+        chat_id: (data.telegram && data.telegram.chat_id) || '',
+        use_gmail_proxy: !!(data.telegram && data.telegram.use_gmail_proxy),
+      },
+      webhook: {
+        enabled: !!(data.webhook && data.webhook.enabled),
+        url: (data.webhook && data.webhook.url) || '',
+        secret: (data.webhook && data.webhook.secret) || '',
+        use_gmail_proxy: !!(data.webhook && data.webhook.use_gmail_proxy),
+      },
+      imgbed: {
+        base_url: (data.imgbed && data.imgbed.base_url) || '',
+        upload_token: (data.imgbed && data.imgbed.upload_token) || '',
+      },
+      imgbed_deploy_url: data.imgbed_deploy_url || defaultImgbedDeployUrl,
+    };
+  } catch (e) {
+    console.error('加载通知设置失败:', e);
+  }
+}
+
+/** 保存第三方通知配置 */
+async function saveNotifySettings() {
+  notifySaving.value = true;
+  notifySuccess.value = false;
+  notifyError.value = '';
+  try {
+    const res = await api.put('/notify/settings', {
+      enabled: notifyForm.value.enabled,
+      dnd_start: notifyForm.value.dnd_start,
+      dnd_end: notifyForm.value.dnd_end,
+      mode: notifyForm.value.mode,
+      bark: { ...notifyForm.value.bark },
+      telegram: { ...notifyForm.value.telegram },
+      webhook: { ...notifyForm.value.webhook },
+      imgbed: { ...notifyForm.value.imgbed },
+    }) as any;
+    if (res && res.success === false) {
+      notifyError.value = res.message || '保存失败';
+      setTimeout(() => { notifyError.value = ''; }, 5000);
+      return;
+    }
+    notifySuccess.value = true;
+    await loadNotifySettings();
+    setTimeout(() => { notifySuccess.value = false; }, 2500);
+  } catch (e: any) {
+    notifyError.value = e.message || '保存失败';
+    setTimeout(() => { notifyError.value = ''; }, 5000);
+  } finally {
+    notifySaving.value = false;
+  }
+}
+
+/** 测试指定渠道（绕过总开关与免打扰） */
+async function testNotifyChannel(channel: 'bark' | 'telegram' | 'webhook') {
+  if (notifyTesting.value) return;
+  notifyTesting.value = true;
+  notifyTestingChannel.value = channel;
+  notifyTestMsg.value = '';
+  notifyTestOk.value = false;
+  try {
+    // 先保存当前表单，避免测试的是旧配置
+    await api.put('/notify/settings', {
+      enabled: notifyForm.value.enabled,
+      dnd_start: notifyForm.value.dnd_start,
+      dnd_end: notifyForm.value.dnd_end,
+      mode: notifyForm.value.mode,
+      bark: { ...notifyForm.value.bark },
+      telegram: { ...notifyForm.value.telegram },
+      webhook: { ...notifyForm.value.webhook },
+      imgbed: { ...notifyForm.value.imgbed },
+    });
+    // 图片模式需生成卡片 + 图床上传，超时放宽
+    const testTimeout = notifyForm.value.mode === 'image' ? 60000 : 30000;
+    const res = await api.post('/notify/test', { channel }, { timeout: testTimeout }) as any;
+    notifyTestOk.value = !!res?.success;
+    notifyTestMsg.value = res?.message || (res?.success ? '测试成功' : '测试失败');
+  } catch (e: any) {
+    notifyTestOk.value = false;
+    const detail = e?.response?.data?.message || e?.response?.data?.detail || e?.message;
+    notifyTestMsg.value = detail ? `测试失败：${detail}` : '测试失败';
+  } finally {
+    notifyTesting.value = false;
+  }
+}
+
+/** 组装图床配置载荷（测试时带上未保存表单） */
+function imgbedPayload() {
+  return {
+    imgbed: {
+      base_url: notifyForm.value.imgbed.base_url,
+      upload_token: notifyForm.value.imgbed.upload_token,
+    },
+  };
+}
+
+/** 测试自建图床：探活 + 上传测试卡片 */
+async function testImgbed() {
+  if (notifyImgbedBusy.value) return;
+  notifyImgbedBusy.value = true;
+  notifyImgbedAction.value = 'test';
+  notifyImgbedMsg.value = '';
+  notifyImgbedOk.value = false;
+  notifyImgbedPreviewUrl.value = '';
+  try {
+    const res = await api.post('/notify/imgbed/test', imgbedPayload(), { timeout: 45000 }) as any;
+    notifyImgbedOk.value = !!res?.success;
+    notifyImgbedMsg.value = res?.message || (res?.success ? '测试成功' : '测试失败');
+    if (res?.success && res?.data?.url) {
+      notifyImgbedPreviewUrl.value = res.data.url;
+      // 测试成功后自动落库图床配置，便于 Bark 图片推送立刻可用
+      try {
+        await api.put('/notify/settings', {
+          enabled: notifyForm.value.enabled,
+          dnd_start: notifyForm.value.dnd_start,
+          dnd_end: notifyForm.value.dnd_end,
+          mode: notifyForm.value.mode,
+          bark: { ...notifyForm.value.bark },
+          telegram: { ...notifyForm.value.telegram },
+          webhook: { ...notifyForm.value.webhook },
+          imgbed: { ...notifyForm.value.imgbed },
+        });
+      } catch {
+        /* 自动保存失败不阻断测试结果展示 */
+      }
+    }
+  } catch (e: any) {
+    notifyImgbedOk.value = false;
+    const detail = e?.response?.data?.message || e?.response?.data?.detail || e?.message;
+    notifyImgbedMsg.value = detail ? `测试失败：${detail}` : '测试失败';
+  } finally {
+    notifyImgbedBusy.value = false;
+    notifyImgbedAction.value = '';
+  }
+}
+
+/** 打开清理图床确认弹窗（项目内样式，非 window.confirm） */
+function purgeImgbed() {
+  if (notifyImgbedBusy.value) return;
+  notifyPurgeConfirmVisible.value = true;
+}
+
+/** 确认后执行图床清理 */
+async function confirmPurgeImgbed() {
+  if (notifyImgbedBusy.value) return;
+  notifyPurgeConfirmVisible.value = false;
+
+  notifyImgbedBusy.value = true;
+  notifyImgbedAction.value = 'purge';
+  notifyImgbedMsg.value = '';
+  notifyImgbedOk.value = false;
+  notifyImgbedPreviewUrl.value = '';
+  try {
+    const res = await api.post('/notify/imgbed/purge', imgbedPayload(), { timeout: 60000 }) as any;
+    notifyImgbedOk.value = !!res?.success;
+    notifyImgbedMsg.value = res?.message || (res?.success ? '清理完成' : '清理失败');
+    if (res?.success) {
+      ui.success(notifyImgbedMsg.value || '清理完成');
+    } else {
+      ui.error(notifyImgbedMsg.value || '清理失败');
+    }
+  } catch (e: any) {
+    notifyImgbedOk.value = false;
+    const detail = e?.response?.data?.message || e?.response?.data?.detail || e?.message;
+    notifyImgbedMsg.value = detail ? `清理失败：${detail}` : '清理失败';
+    ui.error(notifyImgbedMsg.value);
+  } finally {
+    notifyImgbedBusy.value = false;
+    notifyImgbedAction.value = '';
+  }
+}
+
 
 const backupOpen = ref(false);
 const backupSaving = ref(false);
@@ -712,10 +1436,17 @@ function onBackupPathConfirmed(path: string) {
 
 <style scoped>
 .settings-page {
+  /* 覆盖 App.vue .content>* 的 display:flex，避免展开后卡片被 flex 压缩裁剪 */
+  display: block;
+  flex: 1;
+  min-height: 0;
   height: 100%;
+  overflow-x: hidden;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: var(--space-6);
   background: var(--bg-secondary);
+  box-sizing: border-box;
 }
 
 /* Gmail 代理配置卡片 */
@@ -725,6 +1456,8 @@ function onBackupPathConfirmed(path: string) {
   box-shadow: var(--shadow-card);
   overflow: hidden;
   margin-bottom: var(--space-4);
+  /* 禁止在父级 flex 场景下被压扁，保证展开内容完整可见 */
+  flex-shrink: 0;
 }
 
 .gmail-toggle {
@@ -778,6 +1511,367 @@ function onBackupPathConfirmed(path: string) {
 .gmail-toggle-desc {
   font-size: 11px;
   color: var(--text-tertiary);
+}
+
+
+/* 通知设置卡片：紫靛渐变，区别备份蓝 / Gmail 红 */
+.notify-toggle {
+  background: linear-gradient(135deg, #F5F0FF 0%, #EFE8FF 100%);
+}
+.notify-toggle:hover {
+  background: linear-gradient(135deg, #EDE5FF 0%, #E6DCFF 100%);
+}
+.notify-toggle-icon {
+  background: white;
+  box-shadow: 0 2px 8px rgba(88, 86, 214, 0.14);
+  color: #5856D6;
+}
+.notify-dim {
+  /* 仅弱化，不隐藏结构；交互由 disabled 控制 */
+  opacity: 0.72;
+  pointer-events: none;
+}
+/* 免打扰 | 通知模式 左右并排 */
+.notify-inline-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px 16px;
+  align-items: start;
+  margin-bottom: var(--space-3);
+}
+.notify-inline-field {
+  margin-bottom: 0 !important;
+  min-width: 0;
+}
+.notify-inline-field .field-label {
+  margin-bottom: 8px;
+}
+.notify-inline-field .field-hint {
+  margin-top: 6px;
+  line-height: 1.35;
+  font-size: 11px;
+}
+.notify-dnd-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  min-height: 36px;
+}
+.notify-time {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+  height: 36px;
+  box-sizing: border-box;
+}
+.notify-dnd-sep {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  flex-shrink: 0;
+}
+/* 分段控件（紧凑，对齐时间输入高度） */
+.notify-segment {
+  display: flex;
+  width: 100%;
+  max-width: none;
+  height: 36px;
+  padding: 3px;
+  box-sizing: border-box;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.06);
+  border: 1px solid var(--border-color);
+  gap: 2px;
+}
+.notify-segment-item {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1;
+}
+.notify-segment-item:hover:not(:disabled):not(.active) {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.45);
+}
+.notify-segment-item.active {
+  background: var(--bg-card, #fff);
+  color: var(--text-primary);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+.notify-segment-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+.notify-inline-mode {
+  display: flex;
+  flex-direction: column;
+}
+.notify-inline-dnd .notify-dnd-row,
+.notify-inline-mode .notify-segment {
+  width: 100%;
+  align-self: stretch;
+}
+.notify-channels {
+  margin-top: var(--space-3);
+  margin-bottom: var(--space-3);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg-secondary, #f5f5f7);
+}
+.notify-guide-tabs {
+  border-radius: 0;
+  margin: 0;
+  padding: 4px !important;
+  background: rgba(0, 0, 0, 0.04);
+  border-bottom: none;
+  gap: 4px;
+}
+.notify-guide-tabs .guide-tab {
+  flex: 1;
+  justify-content: center;
+  padding: 8px 12px;
+}
+.notify-guide-tabs .guide-tab:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.notify-channel-panel {
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-card);
+}
+.notify-secret-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 520px;
+}
+.notify-secret-row .input {
+  flex: 1;
+}
+.btn-secret-toggle {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.btn-secret-toggle:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+.notify-test-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.notify-warn-hint {
+  color: #B25000 !important;
+}
+.notify-tip {
+  margin-top: var(--space-3);
+}
+
+/* 清理图床确认弹窗 */
+.notify-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.42);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.notify-confirm-dialog {
+  width: min(400px, 100%);
+  padding: 22px 22px 18px;
+  border-radius: 14px;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border-color, rgba(0,0,0,0.08));
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.22);
+  text-align: center;
+  animation: notifyConfirmIn 0.18s ease;
+}
+@keyframes notifyConfirmIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.notify-confirm-icon {
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 12px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ff3b30;
+  background: rgba(255, 59, 48, 0.1);
+}
+.notify-confirm-title {
+  margin: 0 0 8px;
+  font-size: 17px;
+  font-weight: 650;
+  color: var(--text-primary, #1d1d1f);
+}
+.notify-confirm-message {
+  margin: 0 0 18px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-secondary, #6e6e73);
+}
+.notify-confirm-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+.notify-confirm-actions .btn {
+  min-width: 96px;
+}
+.notify-confirm-actions .btn-danger {
+  background: #ff3b30;
+  border-color: #ff3b30;
+  color: #fff;
+}
+.notify-confirm-actions .btn-danger:hover {
+  filter: brightness(0.96);
+}
+.notify-confirm-actions .btn-danger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* 全局 Cloudflare 图床（免打扰行下方；多渠道共用） */
+.notify-imgbed {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(88, 86, 214, 0.04) 0%, rgba(0, 122, 255, 0.03) 100%);
+}
+.notify-imgbed-head {
+  margin-bottom: 10px;
+}
+.notify-imgbed-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.notify-imgbed-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.notify-imgbed-desc {
+  display: block;
+  margin-top: 0 !important;
+  line-height: 1.4;
+}
+.notify-imgbed-fields {
+  margin-bottom: 8px !important;
+}
+.notify-imgbed-fields .field {
+  margin-bottom: 0 !important;
+}
+.notify-secret-row-full {
+  max-width: none;
+  width: 100%;
+}
+/* Deploy to Cloudflare — 官方深色徽章风格 */
+.cf-deploy-btn {
+  --cf-orange: #F6821F;
+  text-decoration: none !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 14px 0 12px;
+  border-radius: 999px;
+  background: #111827;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease;
+  line-height: 1;
+  white-space: nowrap;
+  user-select: none;
+}
+.cf-deploy-btn:hover {
+  background: #1f2937;
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  color: #fff !important;
+}
+.cf-deploy-btn:active {
+  transform: translateY(1px);
+  background: #0b1220;
+}
+.cf-deploy-cloud {
+  width: 18px;
+  height: 12px;
+  flex-shrink: 0;
+  display: block;
+}
+.cf-deploy-text {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: #f5f5f7;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+.notify-toggle-pair {
+  margin-bottom: 8px !important;
+  align-items: center;
+}
+.notify-toggle-pair .proxy-field {
+  margin-bottom: 0 !important;
+}
+.notify-toggle-pair .proxy-label {
+  margin-bottom: 0;
+}
+.notify-warn-hint {
+  display: block;
+  margin: -2px 0 10px;
+  color: #c77a00;
+}
+
+.notify-purge-btn {
+  opacity: 0.92;
+}
+.notify-imgbed-link {
+  margin-left: 8px;
+  color: var(--accent-blue, #007AFF);
+  text-decoration: underline;
+  font-size: 12px;
+}
+.notify-imgbed .notify-test-row {
+  margin-top: 2px;
 }
 
 /* 备份卡片头部：使用蓝色渐变区别于 Gmail 代理的红色 */
@@ -1408,6 +2502,8 @@ function onBackupPathConfirmed(path: string) {
   border-radius: var(--border-radius-lg);
   box-shadow: var(--shadow-card);
   overflow: hidden;
+  flex-shrink: 0;
+  margin-bottom: var(--space-4);
 }
 
 /* 折叠按钮 */
@@ -1734,25 +2830,22 @@ function onBackupPathConfirmed(path: string) {
   opacity: 0;
 }
 
-.expand-enter-active {
-  animation: expandIn 0.3s ease;
-}
-
+/* 展开动画：仅淡入位移，不用 max-height，避免高内容被裁切 */
+.expand-enter-active,
 .expand-leave-active {
-  animation: expandIn 0.2s ease reverse;
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
-@keyframes expandIn {
-  from {
+.expand-enter-from,
+.expand-leave-to {
   opacity: 0;
-  max-height: 0;
-  overflow: hidden;
-  }
-  to {
+  transform: translateY(-6px);
+}
+
+.expand-enter-to,
+.expand-leave-from {
   opacity: 1;
-  max-height: 2000px;
-  overflow: hidden;
-  }
+  transform: translateY(0);
 }
 
 @keyframes pulse {
@@ -1762,6 +2855,11 @@ function onBackupPathConfirmed(path: string) {
 
 /* 移动端适配 */
 @media (max-width: 768px) {
+  .notify-inline-row {
+  grid-template-columns: 1fr;
+  gap: 14px;
+  }
+
   .settings-page {
   padding: var(--space-4);
   }

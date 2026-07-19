@@ -35,20 +35,102 @@ class SyncFolderResult:
 
 
 def build_body_preview(body_text: str = "", body_html: str = "", max_len: int = BODY_PREVIEW_MAX) -> str:
-    """从正文生成通知用纯文本截取（不含完整 HTML）。"""
+    """生成列表/通知用纯文本截取；尽量保留段落与换行。
+
+    优先纯文本；否则从 HTML 抽取，并将 <br>/<p>/<div> 等转为换行。
+    不再把全文空白压成单行，避免推送正文「一整段糊在一起」。
+    """
+    import html as _html
+    import re as _re
+
     text_val = (body_text or "").strip()
     if not text_val and body_html:
-        # 粗去标签
-        import re as _re
-        text_val = _re.sub(r"(?is)<script[^>]*>.*?</script>", " ", body_html)
-        text_val = _re.sub(r"(?is)<style[^>]*>.*?</style>", " ", text_val)
-        text_val = _re.sub(r"(?s)<[^>]+>", " ", text_val)
-        text_val = _re.sub(r"\s+", " ", text_val).strip()
+        html = body_html or ""
+        # 去掉不可见脚本样式
+        html = _re.sub(r"(?is)<script[^>]*>.*?</script>", "\n", html)
+        html = _re.sub(r"(?is)<style[^>]*>.*?</style>", "\n", html)
+        # 块级 / 换行标签 → 换行，保留段落结构
+        html = _re.sub(r"(?i)<br\s*/?>", "\n", html)
+        html = _re.sub(
+            r"(?i)</?(p|div|tr|li|h[1-6]|blockquote|section|article|"
+            r"header|footer|table|thead|tbody|ul|ol|hr|pre)(\s[^>]*)?>",
+            "\n",
+            html,
+        )
+        # 去掉剩余标签
+        text_val = _re.sub(r"(?s)<[^>]+>", "", html)
+        text_val = _html.unescape(text_val).strip()
+
     if not text_val:
         return ""
-    text_val = " ".join(text_val.split())
+
+    text_val = text_val.replace("\r\n", "\n").replace("\r", "\n")
+    # 行内空白折叠，行与空行（段落）保留
+    raw_lines = []
+    prev_blank = True
+    for line in text_val.split("\n"):
+        collapsed = " ".join(line.split())
+        if not collapsed:
+            if not prev_blank and raw_lines:
+                raw_lines.append("")
+                prev_blank = True
+            continue
+        raw_lines.append(collapsed)
+        prev_blank = False
+    while raw_lines and raw_lines[-1] == "":
+        raw_lines.pop()
+
+    # 软换行回流：上一行较长且不像句末时，与下一行用空格拼接（常见邮件 72 列硬折行）
+    # 空行始终作为段落分隔保留
+    lines: list = []
+    buf = ""
+    for line in raw_lines:
+        if line == "":
+            if buf:
+                lines.append(buf)
+                buf = ""
+            if lines and lines[-1] != "":
+                lines.append("")
+            continue
+        if not buf:
+            buf = line
+            continue
+        ends_sentence = buf.endswith(
+            (".", "!", "?", "。", "！", "？", "…", ":", "：", '"', "'", "”", "’", ")", "）", "」", "』")
+        )
+        # 较短行更可能是有意换行（列表/签名/中文分段），不合并
+        if (not ends_sentence) and len(buf) >= 48:
+            buf = f"{buf} {line}"
+        else:
+            lines.append(buf)
+            buf = line
+    if buf:
+        lines.append(buf)
+
+    # 再次压掉连续空行
+    out_lines: list = []
+    prev_blank = False
+    for line in lines:
+        if line == "":
+            if not prev_blank and out_lines:
+                out_lines.append("")
+                prev_blank = True
+            continue
+        out_lines.append(line)
+        prev_blank = False
+
+    text_val = "\n".join(out_lines).strip()
+    if not text_val:
+        return ""
     if len(text_val) > max_len:
-        return text_val[:max_len] + "…"
+        cut = text_val[:max_len].rstrip()
+        # 尽量在段落或空格边界截断，避免半截词
+        for sep in ("\n\n", "\n", " "):
+            pos = cut.rfind(sep)
+            if pos >= max_len // 2:
+                cut = cut[:pos].rstrip()
+                break
+        return cut + "…"
     return text_val
 
 
@@ -97,6 +179,72 @@ from utils.logger import get_logger
 from utils.tasks import create_background_task
 
 logger = get_logger("cache")
+
+# 新邮件通知补拉正文预览的上限（避免离线堆积时一次 BODY.PEEK 过多；最新优先）
+# 第三方推送依赖 body_preview，默认 50 封可覆盖常见突发量
+BODY_PREVIEW_ENRICH_MAX = 50
+
+
+async def enrich_new_mail_body_previews(receiver, folder: str, items: list, max_items: int = BODY_PREVIEW_ENRICH_MAX) -> None:
+    """为通知摘要补齐 body_preview。
+
+    列表/增量同步只 FETCH 头字段，Message 无正文，导致第三方通知缺正文。
+    此处仅对「真正新增且预览为空」的少量邮件按 UID 拉详情（BODY.PEEK[]，不改 Seen）。
+    失败不抛错，保证同步与通知主路径不受影响。
+    """
+    if not items or receiver is None:
+        return
+
+    need = [
+        it for it in items
+        if not str(it.get("body_preview") or "").strip() and int(it.get("uid") or 0) > 0
+    ]
+    if not need:
+        return
+
+    # 最新优先；超出上限的仍发通知，只是可能无正文截取
+    limit = max(1, int(max_items or BODY_PREVIEW_ENRICH_MAX))
+    need_sorted = sorted(need, key=lambda x: int(x.get("uid") or 0), reverse=True)
+    skipped = max(0, len(need_sorted) - limit)
+    need = need_sorted[:limit]
+    if skipped:
+        logger.info(
+            "新邮件正文预览补齐超限: folder=%s total=%d limit=%d skipped=%d（超出部分仍推送，可能无正文）",
+            folder or "INBOX",
+            len(need_sorted),
+            limit,
+            skipped,
+        )
+    folder_path = folder or "INBOX"
+    filled = 0
+    for it in need:
+        uid = int(it.get("uid") or 0)
+        try:
+            detail = await receiver.fetch_message_detail(str(uid), folder_path)
+            preview = build_body_preview(
+                getattr(detail, "body_text", "") or "",
+                getattr(detail, "body_html", "") or "",
+            )
+            if preview:
+                it["body_preview"] = preview
+                filled += 1
+            # 详情里若有更完整元信息，顺带补齐（不覆盖已有非空）
+            if not str(it.get("cc") or "").strip():
+                cc_val = getattr(detail, "cc", "") or ""
+                if cc_val:
+                    it["cc"] = cc_val
+            if not str(it.get("rfc_message_id") or "").strip():
+                mid = getattr(detail, "message_id", "") or ""
+                if mid:
+                    it["rfc_message_id"] = mid
+        except Exception as e:
+            logger.debug("补拉正文预览失败 uid=%s folder=%s: %s", uid, folder_path, e)
+    if filled:
+        logger.info(
+            "新邮件正文预览已补齐: folder=%s, filled=%d/%d",
+            folder_path, filled, len(need),
+        )
+
 
 # 全量同步：分页拉满，避免只取首页 500 封导致大邮箱缺信
 FULL_SYNC_PAGE_SIZE = 500
@@ -369,6 +517,14 @@ async def _do_sync(receiver, account: Account, folder: str, force_full: bool = F
         inserted_count = sum(1 for m in messages if m.uid not in existing_uids)
 
         new_mail_items = messages_to_new_mail_items(messages, account, folder, existing_uids)
+        # 列表同步无正文：增量场景为第三方通知补拉纯文本预览
+        # 首次/全量同步 new_mail_items 可能极多且通常不发通知，跳过 BODY.PEEK
+        if new_mail_items and max_uid > 0 and len(new_mail_items) <= 100:
+            try:
+                await enrich_new_mail_body_previews(receiver, folder, new_mail_items)
+            except Exception as e:
+                logger.debug("enrich body_preview 跳过: %s", e)
+
 
         # 用 UNSEEN 校正本次拉取邮件的 is_read 状态
         if unseen_uids is not None:

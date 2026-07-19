@@ -43,6 +43,7 @@ from routes.contacts import router as contacts_router
 from routes.folders import router as folders_router
 from routes.messages import router as messages_router
 from routes.notifications import router as notifications_router
+from routes.notify_settings import router as notify_settings_router
 from routes.settings import router as settings_router
 from routes.signatures import router as signatures_router
 from routes.websocket import router as websocket_router
@@ -108,6 +109,7 @@ app = FastAPI(
         {"name": "账号", "description": "邮箱账号的增删改查、授权认证"},
         {"name": "邮件", "description": "邮件列表、详情、已读标记、删除、发送"},
         {"name": "通知", "description": "新邮件通知的持久化与管理"},
+        {"name": "第三方通知", "description": "Bark / Telegram 等外部推送设置（与应用内铃铛独立）"},
         {"name": "WebSocket", "description": "实时推送新邮件通知"},
     ],
 )
@@ -159,6 +161,7 @@ app.include_router(contacts_router)
 app.include_router(folders_router)
 app.include_router(messages_router)
 app.include_router(notifications_router)
+app.include_router(notify_settings_router)
 app.include_router(settings_router)
 app.include_router(signatures_router)
 app.include_router(websocket_router)

@@ -1,31 +1,31 @@
-# 依赖
+﻿# 渚濊禆
 node_modules/
 package-lock.json
 __pycache__/
 *.pyc
 *.pyo
 
-# 构建产物
+# 鏋勫缓浜х墿
 dist/
 build/
 *.spec
 
-# 后端本地开发数据
+# 鍚庣鏈湴寮€鍙戞暟鎹?
 backend/data/
 backend/ui/
 
-# Cloudflare OAuth Broker（本地部署配置，不上传）
+# Cloudflare OAuth Broker锛堟湰鍦伴儴缃查厤缃紝涓嶄笂浼狅級
 cloudflare/
 
-# 项目主页（Cloudflare Pages 部署用，不上传）
+# 椤圭洰涓婚〉锛圕loudflare Pages 閮ㄧ讲鐢紝涓嶄笂浼狅級
 pages/
 
-# 项目文档与 CI（本地使用，不上传 GitHub）
-README旧.md
+# 椤圭洰鏂囨。涓?CI锛堟湰鍦颁娇鐢紝涓嶄笂浼?GitHub锛?
+README鏃?md
 doc/
 .github/
 
-# 飞牛OS 应用包（本地构建产物，不上传）
+# 椋炵墰OS 搴旂敤鍖咃紙鏈湴鏋勫缓浜х墿锛屼笉涓婁紶锛?
 flymail/
 
 # IDE
@@ -35,20 +35,26 @@ flymail/
 *.swo
 .trae/
 
-# 系统文件
+# 绯荤粺鏂囦欢
 .DS_Store
 Thumbs.db
 
-# fnpack 生成的 fpk 文件
+# fnpack 鐢熸垚鐨?fpk 鏂囦欢
 *.fpk
 
-# 日志
+# 鏃ュ織
 *.log
 
-# 运行时数据库文件（不应纳入版本控制）
+# 杩愯鏃舵暟鎹簱鏂囦欢锛堜笉搴旂撼鍏ョ増鏈帶鍒讹級
 *.db
 *.db-journal
 
-# 本地临时测试 / 补丁脚本（不上传 GitHub）
+# 鏈湴涓存椂娴嬭瘯 / 琛ヤ竵鑴氭湰锛堜笉涓婁紶 GitHub锛?
 backend/tests/
 backend/tools/
+
+# 鏍圭洰褰曚竴娆℃€цˉ涓?/ 棰勮 / 楠岃瘉娈嬬暀锛堜笉涓婁紶锛?
+/_*.py
+/_*.txt
+docs-temp-*.png
+frontend/scripts/test-*.mjs

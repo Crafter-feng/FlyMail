@@ -287,8 +287,9 @@
   </transition-group>
   </div>
 
-  <!-- 全局 Confirm 确认框 -->
-  <div v-if="uiStore.confirmVisible" class="dialog-overlay" @click.self="uiStore.confirmCancel()">
+  <!-- 全局 Confirm 确认框（Teleport 到 body，避免被页面层叠遮挡） -->
+  <Teleport to="body">
+  <div v-if="uiStore.confirmVisible" class="dialog-overlay confirm-overlay" @click.self="uiStore.confirmCancel()">
   <div class="confirm-dialog">
   <h3 class="confirm-title">{{ uiStore.confirmOptions.title }}</h3>
   <p class="confirm-message">{{ uiStore.confirmOptions.message }}</p>
@@ -306,6 +307,7 @@
   </div>
   </div>
   </div>
+  </Teleport>
   </div>
 </template>
 
@@ -1348,6 +1350,9 @@ watch(showNotificationPanel, (open) => {
 }
 
 /* Confirm 确认框 */
+.confirm-overlay {
+  z-index: 5000 !important;
+}
 .confirm-dialog {
   background: var(--bg-card);
   border-radius: var(--border-radius-lg);
@@ -1376,6 +1381,14 @@ watch(showNotificationPanel, (open) => {
   display: flex;
   justify-content: flex-end;
   gap: var(--space-3);
+}
+.confirm-actions .btn-danger {
+  background: #ff3b30;
+  border-color: #ff3b30;
+  color: #fff;
+}
+.confirm-actions .btn-danger:hover {
+  filter: brightness(0.96);
 }
 
 /* 通知铃铛按钮 */

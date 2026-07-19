@@ -212,6 +212,7 @@ class MailSyncService:
             payload = {
                 "type": "new_mail",
                 "notification_id": notification_id,
+                "user_uid": user_uid or "default",
                 "account_id": account_id,
                 "folder": item.get("folder") or folder,
                 "provider": provider,
