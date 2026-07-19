@@ -7,9 +7,8 @@
   <!-- PWA Web App Manifest（与飞牛打包 flymail/manifest 无关） -->
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#007AFF">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <!-- 飞牛网关依赖浏览器 Cookie；iOS standalone 与 Safari 会话隔离会 invalid token，故不启用全屏 WebApp -->
+  <meta name="apple-mobile-web-app-capable" content="no">
   <meta name="apple-mobile-web-app-title" content="飞邮">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192.png">
