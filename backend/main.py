@@ -21,7 +21,7 @@ import asyncio
 import uvicorn
 from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -193,11 +193,34 @@ async def serve_spa(full_path: str):
     """SPA 兜底：静态文件优先，其余返回 index.html。
 
     C5：必须经 resolve_ui_file 约束在 UI_DIR 内，禁止 ../ 路径穿越读任意文件。
+
+    PWA 注意：manifest / 图标等静态后缀若缺失，禁止回退 index.html，
+    否则主屏幕会把 HTML 当图标，安装信息也会异常。
     """
     safe = resolve_ui_file(UI_DIR, full_path)
     if safe is not None:
-        return FileResponse(str(safe))
+        media_type = None
+        suffix = safe.suffix.lower()
+        if suffix == ".webmanifest":
+            media_type = "application/manifest+json"
+        elif suffix == ".json":
+            media_type = "application/json"
+        elif suffix == ".png":
+            media_type = "image/png"
+        elif suffix == ".svg":
+            media_type = "image/svg+xml"
+        return FileResponse(str(safe), media_type=media_type)
+    # 静态资源未命中 → 404；业务路由前端刷新仍走 index.html
+    no_spa_fallback = {
+        ".webmanifest", ".json", ".png", ".jpg", ".jpeg", ".gif", ".webp",
+        ".svg", ".ico", ".woff", ".woff2", ".ttf", ".map", ".txt",
+    }
+    leaf = full_path.rsplit("/", 1)[-1]
+    req_suffix = ("." + leaf.rsplit(".", 1)[-1].lower()) if "." in leaf else ""
+    if req_suffix in no_spa_fallback:
+        raise HTTPException(status_code=404, detail="static asset not found")
     return FileResponse(str(UI_DIR / "index.html"))
+
 
 
 # ==================== 双服务启动 ====================
