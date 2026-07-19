@@ -43,9 +43,11 @@ def _assets_dir() -> Path:
     """解析通知卡片资源目录（字体 / LOGO）。
 
     查找顺序：
-    1. 与本模块同目录的 assets/（源码运行；Nuitka include-data-dir 解压路径）
-    2. 可执行文件旁的 notify-assets/ 或 assets/（飞牛包组装时拷贝，不依赖 onefile 内嵌）
-    3. 回退到模块旁 assets/（即使文件尚未存在，便于报错路径明确）
+    1. 与本模块同目录的 assets/（源码本地运行）
+    2. 可执行文件旁的 notify-assets/ 或 assets/（正式 FPK 只打这一份，不 Nuitka 内嵌）
+    3. 回退到模块旁 assets/（便于报错路径明确）
+
+    说明：FPK 体积优化后字体仅存在于 notify-assets/；本地开发仍用本目录 assets/。
     """
     import sys
 
@@ -69,16 +71,18 @@ def _assets_dir() -> Path:
     return candidates[0]
 
 
+
 def _font_candidates(bold: bool = False) -> List[Path]:
     """字体候选：内置中文字体优先，再回退系统字体。
 
-    飞牛正式环境为 Nuitka onefile，系统通常无中文字体；
-    若回退到 Pillow 默认位图字体，中文会显示为方框（tofu）。
+    飞牛正式环境（Nuitka onefile）系统通常无中文字体；
+    正式包字体位于可执行文件旁 notify-assets/（仅一份，不内嵌进二进制）。
+    若全部失败回退 Pillow 默认位图字体，中文会显示为方框（tofu）。
     """
     assets = _assets_dir()
     windir = Path(os.environ.get("WINDIR", "C:/Windows"))
     fonts: List[Path] = [
-        # 内置（仓库/CI 打包进二进制）
+        # 内置（源码 assets/ 或正式包 notify-assets/）
         assets / "SourceHanSansSC-Regular.otf",
         assets / "NotoSansSC-Regular.otf",
         assets / "wqy-microhei.ttc",

@@ -311,6 +311,7 @@
 </template>
 
 <script setup lang="ts">
+import { openAuthWindowSync, navigateAuthWindow, closeAuthWindow, authWindowBlockedMessage } from '../utils/oauthWindow';
 import { ref, computed, onMounted } from 'vue';
 import api from '../utils/api';
 import { useUIStore } from '../stores/ui';
@@ -513,25 +514,36 @@ async function startAuth() {
   showCustomDialog.value = true;
   return;
   }
-  const authWindow = window.open('', '_blank', 'width=600,height=700');
+  // 必须在 await 前同步打开窗口，否则飞牛 App WebView 会静默拦截（尤其 Google）
   const providerLabel = selectedProvider.value === 'outlook' ? 'Microsoft' : 'Google';
-  if (authWindow) {
-  authWindow.document.write(`<html><head><title>正在跳转...</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f5f5f7;color:#1d1d1f}</style></head><body><p>正在跳转到 ${providerLabel} 授权页面...</p></body></html>`);
+  const { win: authWindow } = openAuthWindowSync(providerLabel);
+  if (!authWindow) {
+    ui.error(authWindowBlockedMessage(providerLabel));
+    return;
   }
   try {
-  // Gmail / Microsoft 都走 Cloudflare Broker，前端不再传本地 redirect_uri。
-  const data = await api.post('/accounts/auth-url', {
-  provider: selectedProvider.value,
-  }) as any;
-  if (data.error) { authWindow?.close(); ui.error('获取授权链接失败：' + data.error); return; }
-  if (data.auth_url) { if (authWindow) authWindow.location.href = data.auth_url; }
-  else { authWindow?.close(); ui.error('获取授权链接失败'); }
+    // Gmail / Microsoft 都走 Cloudflare Broker，前端不再传本地 redirect_uri。
+    const data = await api.post('/accounts/auth-url', {
+      provider: selectedProvider.value,
+    }) as any;
+    if (data.error) {
+      closeAuthWindow(authWindow);
+      ui.error('获取授权链接失败：' + data.error);
+      return;
+    }
+    if (data.auth_url) {
+      if (!navigateAuthWindow(authWindow, data.auth_url)) {
+        ui.error(authWindowBlockedMessage(providerLabel));
+      }
+    } else {
+      closeAuthWindow(authWindow);
+      ui.error('获取授权链接失败');
+    }
   } catch (e: any) {
-  authWindow?.close();
-  ui.error('获取授权链接失败：' + (e.response?.data?.error || e.message || '网络错误'));
+    closeAuthWindow(authWindow);
+    ui.error('获取授权链接失败：' + (e.response?.data?.error || e.message || '网络错误'));
   }
 }
-
 async function addQQAccount() {
   if (!qqForm.value.email || !qqForm.value.auth_code) { ui.warning('请填写邮箱地址和授权码'); return; }
   try {
@@ -720,26 +732,39 @@ function statusText(status: string) {
   return map[status] || status;
 }
 
-/** 重新授权指定账号（复用添加账号的 OAuth 流程） */
+/** 重新授权指定账号（与添加账号相同：先同步开窗，再跳转授权 URL） */
 async function reauthorizeAccount(account: any) {
-  try {
-  const data = await api.post('/accounts/auth-url', {
-  provider: account.provider,
-  user_uid: mailStore.user?.uid || '',
-  }) as any;
-  if (data.auth_url) {
-  // 新标签页打开 OAuth 授权页面（Google 等不支持在当前页跳转）
   const providerLabel = account.provider === 'outlook' ? 'Microsoft' : 'Google';
-  const authWindow = window.open(data.auth_url, '_blank');
-  if (authWindow) {
-  authWindow.document.write(`<html><head><title>正在跳转...</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f5f5f7;color:#1d1d1f}</style></head><body><p>正在跳转到 ${providerLabel} 授权页面...</p></body></html>`);
-  authWindow.location.href = data.auth_url;
+  // 必须在 await 前同步 open，否则飞牛手机 App 内点击「重新授权」会无反应
+  const { win: authWindow } = openAuthWindowSync(providerLabel);
+  if (!authWindow) {
+    ui.error(authWindowBlockedMessage(providerLabel));
+    return;
   }
-  }
-  } catch (e) {
-  ui.error('获取授权链接失败');
+  try {
+    const data = await api.post('/accounts/auth-url', {
+      provider: account.provider,
+      user_uid: mailStore.user?.uid || '',
+    }) as any;
+    if (data.error) {
+      closeAuthWindow(authWindow);
+      ui.error('获取授权链接失败：' + data.error);
+      return;
+    }
+    if (data.auth_url) {
+      if (!navigateAuthWindow(authWindow, data.auth_url)) {
+        ui.error(authWindowBlockedMessage(providerLabel));
+      }
+    } else {
+      closeAuthWindow(authWindow);
+      ui.error('获取授权链接失败');
+    }
+  } catch (e: any) {
+    closeAuthWindow(authWindow);
+    ui.error('获取授权链接失败：' + (e?.response?.data?.error || e?.message || '网络错误'));
   }
 }
+
 </script>
 
 <style scoped>

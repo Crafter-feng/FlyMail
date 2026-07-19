@@ -357,6 +357,7 @@
 </template>
 
 <script setup lang="ts">
+import { openAuthWindowSync, navigateAuthWindow, closeAuthWindow, authWindowBlockedMessage } from '../utils/oauthWindow';
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import draggable from 'vuedraggable';
 import { useMailStore } from '../stores/mail';
@@ -744,22 +745,40 @@ async function onAccountDragEnd() {
   }
 }
 
-/** 重新授权指定账号（复用添加账号的 OAuth 流程） */
+/** 重新授权指定账号（先同步开窗，避免飞牛 App WebView 静默拦截） */
 async function reauthorize(accountId?: string) {
-  try {
   const targetId = accountId || mailStore.currentAccountId;
   const targetAccount = mailStore.accounts.find((a: any) => a.id === targetId);
   if (!targetAccount) return;
   const provider = targetAccount.provider;
-  // Gmail / Microsoft 都走 Cloudflare Broker，前端不再传本地 redirect_uri。
+  const providerLabel = provider === 'outlook' ? 'Microsoft' : 'Google';
   // 标记这是重新授权，OAuth 回调后不跳转到账号页
   sessionStorage.setItem('flymail_oauth_reauth', '1');
-  const data = await api.post('/accounts/auth-url', { provider }) as any;
-  if (data.error) { uiStore.error('获取授权链接失败：' + data.error); return; }
-  if (data.auth_url) { window.open(data.auth_url, '_blank'); }
-  else { uiStore.error('获取授权链接失败'); }
+  // 必须在 await 前同步 open
+  const { win: authWindow } = openAuthWindowSync(providerLabel);
+  if (!authWindow) {
+    uiStore.error(authWindowBlockedMessage(providerLabel));
+    return;
+  }
+  try {
+    // Gmail / Microsoft 都走 Cloudflare Broker，前端不再传本地 redirect_uri。
+    const data = await api.post('/accounts/auth-url', { provider }) as any;
+    if (data.error) {
+      closeAuthWindow(authWindow);
+      uiStore.error('获取授权链接失败：' + data.error);
+      return;
+    }
+    if (data.auth_url) {
+      if (!navigateAuthWindow(authWindow, data.auth_url)) {
+        uiStore.error(authWindowBlockedMessage(providerLabel));
+      }
+    } else {
+      closeAuthWindow(authWindow);
+      uiStore.error('获取授权链接失败');
+    }
   } catch (e: any) {
-  uiStore.error('重新授权失败：' + (e.response?.data?.error || e.message || '网络错误'));
+    closeAuthWindow(authWindow);
+    uiStore.error('重新授权失败：' + (e.response?.data?.error || e.message || '网络错误'));
   }
 }
 
