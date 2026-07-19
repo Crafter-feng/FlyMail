@@ -4,30 +4,36 @@
   "description": "飞牛 OS 自托管邮件客户端（主屏幕快捷方式与浏览器共享登录态）",
   "lang": "zh-CN",
   "dir": "ltr",
-  "start_url": "./",
-  "scope": "./",
+  "start_url": "/app/flymail/",
+  "scope": "/app/flymail/",
   "display": "browser",
   "orientation": "any",
   "background_color": "#F5F5F7",
   "theme_color": "#007AFF",
   "icons": [
     {
-      "src": "icons/icon-192.png",
+      "src": "/app/flymail/icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "icons/icon-512.png",
+      "src": "/app/flymail/icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "icons/icon-512-maskable.png",
+      "src": "/app/flymail/icons/icon-512-maskable.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    },
+    {
+      "src": "/app/flymail/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
     }
   ]
 }

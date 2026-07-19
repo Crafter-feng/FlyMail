@@ -5,15 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>飞邮 FlyMail</title>
   <!-- PWA Web App Manifest（与飞牛打包 flymail/manifest 无关） -->
-  <link rel="manifest" href="manifest.webmanifest">
+  <!-- 必须用绝对路径 /app/flymail/：相对路径在无尾斜杠或 iOS 抓图标时易 404，会退化成标题首字「飞」 -->
+  <link rel="manifest" href="/app/flymail/manifest.webmanifest">
   <meta name="theme-color" content="#007AFF">
   <!-- 飞牛网关依赖浏览器 Cookie；iOS standalone 与 Safari 会话隔离会 invalid token，故不启用全屏 WebApp -->
   <meta name="apple-mobile-web-app-capable" content="no">
   <meta name="apple-mobile-web-app-title" content="飞邮">
-  <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192.png">
-  <link rel="apple-touch-icon" sizes="512x512" href="icons/icon-512.png">
-  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <!-- iOS 主屏幕图标：优先 180x180，绝对路径 -->
+  <link rel="apple-touch-icon" href="/app/flymail/apple-touch-icon.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/app/flymail/apple-touch-icon.png">
+  <link rel="apple-touch-icon" sizes="192x192" href="/app/flymail/icons/icon-192.png">
+  <link rel="apple-touch-icon" sizes="512x512" href="/app/flymail/icons/icon-512.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/app/flymail/icons/icon-192.png">
+  <link rel="icon" type="image/png" href="/app/flymail/icon.png">
 </head>
 <body>
   <div id="app"></div>
