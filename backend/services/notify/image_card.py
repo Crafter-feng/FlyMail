@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """飞邮通知卡片图片渲染（方案 B · 蓝顶栏）。
 
 设计要点：
@@ -39,53 +39,141 @@ C = {
 }
 
 
+def _assets_dir() -> Path:
+    """解析通知卡片资源目录（字体 / LOGO）。
+
+    查找顺序：
+    1. 与本模块同目录的 assets/（源码运行；Nuitka include-data-dir 解压路径）
+    2. 可执行文件旁的 notify-assets/ 或 assets/（飞牛包组装时拷贝，不依赖 onefile 内嵌）
+    3. 回退到模块旁 assets/（即使文件尚未存在，便于报错路径明确）
+    """
+    import sys
+
+    candidates: List[Path] = [
+        Path(__file__).resolve().parent / "assets",
+    ]
+    try:
+        exe_dir = Path(sys.executable).resolve().parent
+        candidates += [
+            exe_dir / "notify-assets",
+            exe_dir / "assets",
+            exe_dir / "services" / "notify" / "assets",
+        ]
+    except Exception:
+        pass
+
+    for d in candidates:
+        # 有字体或图标即视为有效资源目录
+        if (d / "SourceHanSansSC-Regular.otf").is_file() or (d / "icon.png").is_file():
+            return d
+    return candidates[0]
+
+
 def _font_candidates(bold: bool = False) -> List[Path]:
-    """系统字体候选（Windows / Linux 常见中文字体）。"""
-    windir = Path(os.environ.get("WINDIR", r"C:\Windows"))
-    fonts: List[Path] = []
+    """字体候选：内置中文字体优先，再回退系统字体。
+
+    飞牛正式环境为 Nuitka onefile，系统通常无中文字体；
+    若回退到 Pillow 默认位图字体，中文会显示为方框（tofu）。
+    """
+    assets = _assets_dir()
+    windir = Path(os.environ.get("WINDIR", "C:/Windows"))
+    fonts: List[Path] = [
+        # 内置（仓库/CI 打包进二进制）
+        assets / "SourceHanSansSC-Regular.otf",
+        assets / "NotoSansSC-Regular.otf",
+        assets / "wqy-microhei.ttc",
+    ]
     if bold:
         fonts += [
             windir / "Fonts" / "msyhbd.ttc",
             windir / "Fonts" / "msyh.ttc",
-            Path("/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc"),
             Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"),
+            Path("/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc"),
+            Path("/usr/share/fonts/opentype/noto/NotoSansCJKsc-Bold.otf"),
             Path("/usr/share/fonts/truetype/wqy/wqy-microhei.ttc"),
+            Path("/usr/share/fonts/truetype/arphic/uming.ttc"),
+            Path("/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf"),
         ]
     else:
         fonts += [
             windir / "Fonts" / "msyh.ttc",
             windir / "Fonts" / "msyhbd.ttc",
-            Path("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"),
             Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
+            Path("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"),
+            Path("/usr/share/fonts/opentype/noto/NotoSansCJKsc-Regular.otf"),
             Path("/usr/share/fonts/truetype/wqy/wqy-microhei.ttc"),
+            Path("/usr/share/fonts/truetype/arphic/uming.ttc"),
+            Path("/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf"),
+            # 仅西文兜底（无 CJK，应尽量避免走到这里）
             Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
         ]
     return fonts
 
 
+_font_cache: Dict[Tuple[int, bool], ImageFont.ImageFont] = {}
+_font_warn_once = False
+
+
 def _load_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    for p in _font_candidates(bold=bold):
-        if not p.exists():
+    """加载可渲染中文的 TrueType/OpenType 字体；失败时记录一次警告。"""
+    global _font_warn_once
+    key = (size, bold)
+    cached = _font_cache.get(key)
+    if cached is not None:
+        return cached
+
+    for fp in _font_candidates(bold=bold):
+        if not fp.exists() or not fp.is_file():
             continue
         try:
-            return ImageFont.truetype(str(p), size=size, index=0)
+            font = ImageFont.truetype(str(fp), size=size, index=0)
+            _font_cache[key] = font
+            return font
         except Exception:
             continue
-    return ImageFont.load_default()
+
+    if not _font_warn_once:
+        _font_warn_once = True
+        try:
+            import logging
+            logging.getLogger(__name__).warning(
+                "通知卡片未找到中文字体，将使用 Pillow 默认字体（中文可能显示为方框）。"
+                "请确认 services/notify/assets 下是否有 SourceHanSansSC-Regular.otf，"
+                "且 Nuitka 已用 --include-data-dir 打包该目录。"
+            )
+        except Exception:
+            pass
+    font = ImageFont.load_default()
+    _font_cache[key] = font
+    return font
 
 
 def _icon_path() -> Optional[Path]:
-    """定位项目 LOGO。"""
+    """定位项目 LOGO：内置资源 → 运行时 UI 目录 → 开发源码路径。"""
     here = Path(__file__).resolve()
-    candidates = [
+    assets = _assets_dir()
+    candidates: List[Path] = [
+        assets / "icon.png",
+    ]
+    # 飞牛正式环境：cmd/main 注入 FLYMAIL_UI_DIR
+    ui_env = (os.environ.get("FLYMAIL_UI_DIR") or "").strip()
+    if ui_env:
+        ui = Path(ui_env)
+        candidates += [
+            ui / "icon.png",
+            ui / "icon-full.png",
+            ui / "icons" / "icon-192.png",
+            ui / "icons" / "icon-512.png",
+        ]
+    candidates += [
         here.parents[2] / "ui" / "icon.png",  # backend/ui/icon.png
         here.parents[2] / "ui" / "icon-full.png",
         here.parents[3] / "pages" / "icon.png",
         here.parents[3] / "flymail" / "ICON.PNG",
     ]
-    for p in candidates:
-        if p.exists():
-            return p
+    for ip in candidates:
+        if ip.exists() and ip.is_file():
+            return ip
     return None
 
 
