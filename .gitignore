@@ -58,3 +58,7 @@ backend/tools/
 /_*.txt
 docs-temp-*.png
 frontend/scripts/test-*.mjs
+
+# FnDepot 构建模板（仅本地/手动复制，不进 FlyMail 仓库）
+build-flymail.yml
+
