@@ -20,7 +20,7 @@ CARD_RADIUS = 28
 # 顶栏高度
 HEADER_H = 148
 # 正文最多行数（防止超长正文撑爆图片）
-MAX_BODY_LINES = 8
+MAX_BODY_LINES = 20  # 图片模式可发长图，正文多展示几行
 # 主题最多行数
 MAX_SUBJECT_LINES = 3
 # 色板（对齐项目 macos 蓝）

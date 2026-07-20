@@ -15,7 +15,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, List as _ListTyping
 
-BODY_PREVIEW_MAX = 300
+BODY_PREVIEW_MAX = 1000  # 通知/列表正文截取：兼顾 TG 4096、Bark 与图片长图可读性
 
 
 @dataclass
