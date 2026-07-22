@@ -19,7 +19,6 @@
 """
 from __future__ import annotations
 
-import asyncio
 import base64
 import hashlib
 import hmac
@@ -393,14 +392,17 @@ class WebhookChannel(NotifyChannel):
 
     def _parse_biz_error(
         self, resp, *, platform: str
-    ) -> Optional[Tuple[Any, str, bool]]:
-        """解析业务错误，返回 (code, message, retryable)；成功返回 None。"""
+    ) -> Optional[Tuple[Any, str]]:
+        """解析业务错误，返回 (code, message)；成功返回 None。
+
+        注意：HTTP 已成功响应时，绝不能因业务瞬时码自动重试 POST，
+        否则（尤其钉钉图片）可能重复推送到群。
+        """
         text = (resp.text or "").strip()
         if resp.status_code >= 400:
             return (
                 resp.status_code,
                 f"HTTP {resp.status_code}: {text[:300]}",
-                resp.status_code in (408, 425, 429, 500, 502, 503, 504),
             )
 
         data: Any = None
@@ -425,17 +427,11 @@ class WebhookChannel(NotifyChannel):
             try:
                 code_i = int(raw_code)
             except Exception:
-                return (None, f"无法解析 errcode={raw_code!r}: {text[:200]}", False)
+                return (None, f"无法解析 errcode={raw_code!r}: {text[:200]}")
             if code_i == 0:
                 return None
             errmsg = str(data.get("errmsg") or data.get("message") or text)[:300]
-            # 钉钉 -1 系统繁忙：常见瞬时错误，消息有时仍会送达
-            retryable = (
-                code_i in (-1, 45009, 400013)
-                or ("系统繁忙" in errmsg)
-                or ("busy" in errmsg.lower())
-            )
-            return (code_i, errmsg, retryable)
+            return (code_i, errmsg)
 
         # 飞书：code / StatusCode
         if platform == "feishu":
@@ -444,7 +440,7 @@ class WebhookChannel(NotifyChannel):
                 try:
                     code_i = int(code)
                 except Exception:
-                    return (None, f"无法解析飞书 code={code!r}: {text[:200]}", False)
+                    return (None, f"无法解析飞书 code={code!r}: {text[:200]}")
                 if code_i == 0:
                     return None
                 msg = str(
@@ -453,12 +449,7 @@ class WebhookChannel(NotifyChannel):
                     or data.get("message")
                     or text
                 )[:300]
-                retryable = (
-                    code_i in (99991400, 99991403)
-                    or ("频繁" in msg)
-                    or ("busy" in msg.lower())
-                )
-                return (code_i, msg, retryable)
+                return (code_i, msg)
             return None
 
         # 通用：明确错误码
@@ -476,28 +467,52 @@ class WebhookChannel(NotifyChannel):
                 msg = str(
                     data.get("message") or data.get("msg") or data.get("errmsg") or text
                 )[:300]
-                return (n, msg, False)
+                return (n, msg)
         return None
+
+    def _is_ambiguous_delivery(
+        self, platform: str, code: Any, errmsg: str
+    ) -> bool:
+        """请求是否「可能已送达」——此时不得重试 POST，也避免误报失败诱使连点。
+
+        钉钉常见：errcode=-1 系统繁忙，群里其实已收到。
+        """
+        try:
+            code_i = int(code) if code is not None else None
+        except Exception:
+            code_i = None
+        msg = (errmsg or "").lower()
+        if platform in ("dingtalk", "wecom") and code_i == -1:
+            return True
+        if "系统繁忙" in (errmsg or "") or "system busy" in msg:
+            return True
+        return False
 
     def _format_biz_error(self, platform: str, code: Any, errmsg: str) -> str:
         """生成可读的中文错误信息。"""
         label = _PLATFORM_LABEL.get(platform, "Webhook")
-        if platform == "dingtalk" and code in (-1, "-1"):
-            return (
-                f"{label} 返回系统繁忙（errcode=-1）。"
-                f"消息可能已送达，请到群里确认；勿连续连点测试（机器人有频率限制）。"
-                f" 原始：{errmsg}"
-            )
         if code is None:
             return f"{label} 业务失败: {errmsg}"
         return f"{label} 业务失败 errcode={code}: {errmsg}"
 
     def _raise_if_failed(self, resp, *, platform: str) -> None:
-        """根据 HTTP 与业务 JSON 判断失败。"""
+        """根据 HTTP 与业务 JSON 判断失败。
+
+        歧义送达（如钉钉 -1）按成功处理并打警告日志，避免自动重试导致重复推送。
+        """
         err = self._parse_biz_error(resp, platform=platform)
         if err is None:
             return
-        code, errmsg, _retryable = err
+        code, errmsg = err
+        if self._is_ambiguous_delivery(platform, code, errmsg):
+            logger.warning(
+                "Webhook 返回歧义结果，按已送达处理（不重试、不报失败）"
+                " platform=%s code=%s msg=%s",
+                platform,
+                code,
+                errmsg[:200],
+            )
+            return
         raise RuntimeError(self._format_biz_error(platform, code, errmsg))
 
     async def send(
@@ -545,42 +560,21 @@ class WebhookChannel(NotifyChannel):
                 else self._build_generic_text(message)
             )
 
-        # 瞬时错误（钉钉 -1 系统繁忙等）自动重试；加签每次刷新
-        max_attempts = 3 if platform in ("dingtalk", "wecom", "feishu") else 1
-        last_err: Optional[str] = None
-        resp = None
+        # 只 POST 一次：业务侧瞬时码（如钉钉 errcode=-1）可能表示已送达，
+        # 绝不能自动重试，否则图片/文本会重复进群。
+        post_url = base_url
+        post_payload = dict(payload)
+        if platform == "dingtalk" and secret:
+            post_url = self._dingtalk_sign_url(base_url, secret)
+        if platform == "feishu" and secret:
+            for k in ("timestamp", "sign"):
+                post_payload.pop(k, None)
+            post_payload = {**self._feishu_sign_fields(secret), **post_payload}
+
         async with build_async_client(proxy_url=proxy_url, timeout=timeout) as client:
-            for attempt in range(1, max_attempts + 1):
-                post_url = base_url
-                post_payload = dict(payload)
-                if platform == "dingtalk" and secret:
-                    post_url = self._dingtalk_sign_url(base_url, secret)
-                if platform == "feishu" and secret:
-                    for k in ("timestamp", "sign"):
-                        post_payload.pop(k, None)
-                    post_payload = {**self._feishu_sign_fields(secret), **post_payload}
+            resp = await client.post(post_url, json=post_payload, headers=headers)
 
-                resp = await client.post(post_url, json=post_payload, headers=headers)
-                biz = self._parse_biz_error(resp, platform=platform)
-                if biz is None:
-                    last_err = None
-                    break
-                code, errmsg, retryable = biz
-                last_err = self._format_biz_error(platform, code, errmsg)
-                if (not retryable) or attempt >= max_attempts:
-                    raise RuntimeError(last_err)
-                logger.warning(
-                    "Webhook 瞬时失败将重试 platform=%s attempt=%s/%s code=%s msg=%s",
-                    platform,
-                    attempt,
-                    max_attempts,
-                    code,
-                    errmsg[:120],
-                )
-                await asyncio.sleep(0.6 * attempt)
-
-        if last_err:
-            raise RuntimeError(last_err)
+        self._raise_if_failed(resp, platform=platform)
 
         via = "代理" if proxy_url else "直连"
         logger.info(
