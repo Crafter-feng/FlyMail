@@ -37,7 +37,7 @@ DEFAULT_TELEGRAM: Dict[str, Any] = {
 DEFAULT_WEBHOOK: Dict[str, Any] = {
     "enabled": False,
     "url": "",
-    # 可选 Bearer Token；空则不带 Authorization
+    # 可选密钥：通用=Bearer；钉钉/飞书=加签；企微忽略
     "secret": "",
     "use_gmail_proxy": False,
 }
@@ -47,7 +47,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "dnd_start": "21:00",
     "dnd_end": "07:00",
     # text | image
-    # image：Telegram / Webhook 直传 PNG；Bark 需用户自建图床后上传卡片图
+    # image：Telegram/企微直传；Bark/钉钉/飞书需图床；通用 Webhook Base64
     "mode": "text",
     "bark": dict(DEFAULT_BARK),
     "telegram": dict(DEFAULT_TELEGRAM),

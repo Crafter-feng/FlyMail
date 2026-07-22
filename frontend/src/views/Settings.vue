@@ -306,7 +306,7 @@
   @click="notifyForm.mode = 'image'"
   >图片</button>
   </div>
-  <span class="field-hint">图片：Telegram / Webhook 直传；Bark 用下方图床</span>
+  <span class="field-hint">图片：Telegram / 企微 Webhook 直传；Bark / 钉钉 / 飞书需图床</span>
   </div>
   </div>
 
@@ -329,7 +329,7 @@
   <span class="cf-deploy-text">Deploy to Cloudflare</span>
   </a>
   </div>
-  <span class="field-hint notify-imgbed-desc">图片通知模式需要部署 Cloudflare 图床（Telegram / Webhook 除外）</span>
+  <span class="field-hint notify-imgbed-desc">图片通知：Bark / 钉钉 / 飞书需图床；Telegram / 企业微信可直传</span>
   </div>
   <div class="notify-inline-row notify-imgbed-fields">
   <div class="field notify-inline-field">
@@ -610,19 +610,19 @@
   class="input"
   type="text"
   v-model="notifyForm.webhook.url"
-  placeholder="https://example.com/hook"
+  placeholder="企微 / 钉钉 / 飞书机器人地址，或其它 https://.../hook"
   :disabled="!notifyForm.enabled || !notifyForm.webhook.enabled"
   />
-  <span class="field-hint">POST JSON；HTTP 2xx 视为成功</span>
+  <span class="field-hint">自动识别企微 / 钉钉 / 飞书；其它地址走通用 JSON</span>
   </div>
   <div class="field notify-inline-field">
-  <label class="field-label">Bearer Token（可选）</label>
+  <label class="field-label">密钥（可选）</label>
   <div class="notify-secret-row notify-secret-row-full">
   <input
   class="input"
   :type="notifyWhSecretVisible ? 'text' : 'password'"
   v-model="notifyForm.webhook.secret"
-  placeholder="留空则不带鉴权头"
+  placeholder="通用 Bearer；钉钉/飞书填加签密钥；企微可不填"
   :disabled="!notifyForm.enabled || !notifyForm.webhook.enabled"
   autocomplete="off"
   />
