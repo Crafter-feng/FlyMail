@@ -149,20 +149,20 @@
   </div>
   <span class="mail-from" :title="displayName(msg.from_addr)">{{ displayName(msg.from_addr) }}</span>
   </div>
-  <!-- 中列：状态图标 + 主题 + 邮箱标签 + 附件 -->
+    <!-- 中列：状态图标 + 主题 + 附件；邮箱标签独立，避免与已读/未读标签挤压 -->
   <div class="mail-info">
   <div class="mail-main-row">
   <!-- 已读/未读邮件图标 -->
   <svg v-if="!msg.is_read" class="mail-status-icon unread-icon" width="16" height="16" viewBox="0 0 24 24"><path fill="currentColor" d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
   <svg v-else class="mail-status-icon read-icon" width="16" height="16" viewBox="0 0 1024 1024" fill="currentColor"><path d="M461.816 79.279c30.333-20.364 69.97-20.373 100.311-0.021l384.19 257.69c9.256 6.208 13.947 16.672 13.216 27.044 0.108 1.548 0.096 3.1-0.034 4.64 0.33 1.778 0.501 3.61 0.501 5.483v495.903C960 919.714 919.706 960 870 960H154c-49.706 0-90-40.286-90-89.982V374.115c0-2.663 0.347-5.245 0.999-7.704-0.004-0.803 0.025-1.608 0.086-2.412-0.804-10.432 3.883-20.985 13.191-27.234z m70.259 519.057c-11.417-10.283-28.76-10.278-40.171 0.012L157.358 900.01h709.674zM124 425.237v424.071L381.796 616.85 124 425.237z m776 0.224L642.268 616.842 900 848.964V425.461zM528.7 129.074a30.005 30.005 30 0 0 0-33.437 0.007L143.678 365.114l283.558 210.762 24.483-22.075c33.891-30.56 85.223-30.88 119.48-0.952l1.034 0.916 24.56 22.121 283.833-210.763z"/></svg>
   <span class="mail-subject">{{ msg.subject || '(无主题)' }}</span>
-  <!-- 邮箱身份标识标签（主题后，完整显示） -->
-  <span v-if="msg.account_email" class="mail-account-tag" :class="msg.account_provider" :title="msg.account_email">
-  {{ msg.account_email }}
-  </span>
   <!-- 附件图标 -->
   <svg v-if="msg.has_attachments" class="att-badge" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
   </div>
+  <!-- 邮箱身份标识：桌面横排跟在主题后；手机端换行，避免与已读/未读压占 -->
+  <span v-if="msg.account_email" class="mail-account-tag" :class="msg.account_provider" :title="msg.account_email">
+  {{ msg.account_email }}
+  </span>
   </div>
   <!-- 已读/未读标签 -->
   <span class="mail-status-tag" :class="msg.is_read ? 'read' : 'unread'">
@@ -1006,8 +1006,8 @@ async function onNasDirConfirmed(targetDir: string) {
 
 /* 头像 */
 .mail-avatar { width: 32px; height: 32px; border-radius: var(--border-radius-full); display: flex; align-items: center; justify-content: center; color: white; font-size: 13px; font-weight: var(--font-semibold); flex-shrink: 0; }
-.mail-info { flex: 1; min-width: 0; display: flex; align-items: center; }
-.mail-main-row { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+.mail-info { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; overflow: hidden; }
+.mail-main-row { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; overflow: hidden; }
 /* 发件人名称：完整显示，空间不足时截断 */
 .mail-from { font-size: 13px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--font-medium); flex: 1; min-width: 0; }
 /* 主题：自适应截断，给邮箱标签让位 */
@@ -1018,7 +1018,7 @@ async function onNasDirConfirmed(targetDir: string) {
 .mail-status-tag.unread { background: rgba(245, 166, 35, 0.12); color: #D48806; }
 .mail-status-tag.read { background: rgba(142, 142, 147, 0.1); color: #8E8E93; }
 
-  /* 邮箱身份标识标签（完整显示，不截断） */
+  /* 邮箱身份标识标签（桌面可完整显示；超长截断） */
 .mail-account-tag {
   font-size: 10px;
   padding: 1px 5px;
@@ -1028,6 +1028,9 @@ async function onNasDirConfirmed(targetDir: string) {
   line-height: 1.5;
   flex-shrink: 0;
   letter-spacing: 0.01em;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .mail-account-tag.qq { background: rgba(255, 220, 4, 0.18); color: #D4940A; }
 .mail-account-tag.gmail { background: rgba(234, 67, 53, 0.1); color: #D93025; }
@@ -1143,6 +1146,8 @@ async function onNasDirConfirmed(targetDir: string) {
 @media (max-width: 768px) {
   /* 移动端缩小发件人列宽度，给主题更多空间 */
   .mail-sender { width: 120px; }
+  /* 手机端不显示邮箱标签，避免与已读/未读标签压占；Web 端保持显示 */
+  .mail-account-tag { display: none; }
 
   /* 工具栏精简 */
   .list-toolbar { padding: 8px 12px; }
