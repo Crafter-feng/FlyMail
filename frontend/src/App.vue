@@ -121,6 +121,24 @@
   <h1 class="topbar-title">{{ currentTitle }}</h1>
   </div>
   <div class="topbar-right">
+  <!-- 列表搜索：铃铛左侧，避免列表工具栏拥挤（飞牛 iframe 更合适） -->
+  <div v-if="listSearch.visible" class="topbar-search">
+  <div class="topbar-search-box">
+  <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+  <input
+  v-model="listSearch.keyword"
+  class="topbar-search-input"
+  type="search"
+  enterkeyhint="search"
+  :placeholder="listSearch.placeholder"
+  @keydown.enter.prevent="listSearch.flush()"
+  @keydown.esc.prevent="onTopbarSearchEsc"
+  />
+  <button v-if="listSearch.keyword" type="button" class="topbar-search-clear" title="清除搜索" @click="listSearch.clear()">
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+  </button>
+  </div>
+  </div>
   <!-- 通知铃铛 -->
   <button class="notification-bell" @click="toggleNotificationPanel">
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -316,6 +334,7 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useMailStore } from './stores/mail';
 import { useBackupStore } from './stores/backup';
 import { useUIStore } from './stores/ui';
+import { useListSearchStore, type ListSearchView } from './stores/listSearch';
 import { storeToRefs } from 'pinia';
 import { providerName } from './utils/provider';
 import { useWebSocket } from './composables/useWebSocket';
@@ -331,6 +350,7 @@ import Backup from './views/Backup.vue';
 const mailStore = useMailStore();
 const backupStore = useBackupStore();
 const uiStore = useUIStore();
+const listSearch = useListSearchStore();
 const { user } = storeToRefs(mailStore);
 const version = import.meta.env.VITE_APP_VERSION || '0.0.0';
 // 从 sessionStorage 恢复上次浏览的页面，刷新后不会回到默认页
@@ -357,6 +377,13 @@ const mobileNavIcons = {
 };
 
 const { connect: connectGlobalWs, disconnect: disconnectGlobalWs } = useWebSocket(handleGlobalWsMessage);
+
+/** 顶栏搜索：Esc 清空 */
+function onTopbarSearchEsc() {
+  if (listSearch.keyword || listSearch.query) {
+    listSearch.clear();
+  }
+}
 
 /** 切换通知面板 */
 function toggleNotificationPanel() {
@@ -752,9 +779,12 @@ watch(currentView, (v) => {
   backupMenuOpen.value = true;
   backupStore.loadFolders();
   }
+  // 顶栏搜索仅在邮件/聚合/备份列表显示
+  const searchable: ListSearchView[] = ['mail', 'unified', 'backup'];
+  listSearch.setActiveView(searchable.includes(v as ListSearchView) ? (v as ListSearchView) : null);
   // 保存当前页面到 sessionStorage，刷新后可恢复
   sessionStorage.setItem('flymail_view', v);
-});
+}, { immediate: true });
 
 // ==================== 通知文本溢出检测（跑马灯效果） ====================
 // 当通知描述文本超出容器宽度时，添加 marquee class 触发 CSS 滚动动画
@@ -1122,6 +1152,90 @@ watch(showNotificationPanel, (open) => {
 .topbar-right {
   display: flex;
   align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1 1 auto;
+  justify-content: flex-end;
+}
+
+/* 顶栏搜索（铃铛左侧） */
+.topbar-search {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  width: min(280px, 36vw);
+  max-width: 320px;
+  flex: 0 1 280px;
+  justify-content: flex-end;
+}
+
+.topbar-search-box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary, var(--bg-hover));
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.topbar-search-box:focus-within {
+  border-color: var(--color-accent);
+  background: var(--bg-primary);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.12);
+}
+
+.topbar-search-box .search-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--text-tertiary, var(--text-secondary));
+  opacity: 0.85;
+}
+
+.topbar-search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--text-sm, 13px);
+  line-height: 1.2;
+}
+
+.topbar-search-input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
+
+.topbar-search-input::placeholder {
+  color: var(--text-tertiary, var(--text-secondary));
+  opacity: 0.75;
+}
+
+.topbar-search-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.topbar-search-clear:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 /* 移动端品牌（桌面端隐藏） */
@@ -1717,6 +1831,10 @@ watch(showNotificationPanel, (open) => {
   #flymail-app { flex-direction: column; }
   .main-wrapper { height: calc(100vh - var(--bottom-bar-height)); }
   .topbar { padding: 0 var(--space-4); }
+  .topbar-left { min-width: 0; flex-shrink: 1; }
+  .topbar-search { width: min(160px, 42vw); max-width: 180px; flex: 1 1 120px; }
+  .topbar-search-box { height: 32px; padding: 0 8px; border-radius: 9px; }
+  .topbar-search-input { font-size: 12px; }
   .content { padding-bottom: var(--bottom-bar-height); }
   .notification-drawer {
   width: 100%;

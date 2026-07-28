@@ -11,7 +11,7 @@
   <polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
   </svg>
   </button>
-  <span class="list-count">聚合 · {{ totalMessages }}封</span>
+  <span class="list-count">{{ searchQuery ? ("搜索 · " + totalMessages + "封") : ("聚合 · " + totalMessages + "封") }}</span>
   <!-- 邮箱筛选下拉框 -->
   <span class="toolbar-divider"></span>
   <select v-if="hasUnifiedAccounts" class="filter-select" v-model="accountFilter" @change="onFilterChange">
@@ -104,6 +104,7 @@
   </div>
   </template>
 
+
   <!-- 加载中（首次加载无缓存数据时显示） -->
   <div v-if="loading && messages.length === 0" class="list-loading">
   <div class="spinner"></div>
@@ -124,7 +125,8 @@
   <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
   <rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 4L12 13L2 4"/>
   </svg>
-  <span>暂无邮件</span>
+  <span>{{ searchQuery ? '未找到匹配的邮件' : '暂无邮件' }}</span>
+  <span v-if="searchQuery" class="list-empty-hint">仅搜索已参与聚合的邮箱收件箱</span>
   </div>
 
   <!-- 邮件列表 -->
@@ -359,8 +361,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import { useMailStore } from '../stores/mail';
+import { useListSearchStore } from '../stores/listSearch';
 import { useUIStore } from '../stores/ui';
 import api from '../utils/api';
 import { providerIcon } from '../utils/provider';
@@ -398,7 +401,24 @@ const noAccounts = ref(false);  // 后端返回的"未添加聚合邮箱"标志
 const filterCounts = ref({ all: 0, unread: 0, read: 0, attachments: 0 });
 const showMobileFilters = ref(false);
 const showAccountList = ref(false);
-const hasActiveFilter = computed(() => readFilter.value !== '' || attachmentFilter.value || accountFilter.value !== '');
+// ===== 列表搜索（顶栏共享） =====
+const listSearch = useListSearchStore();
+const searchQuery = computed(() => listSearch.query);
+
+watch(
+  () => listSearch.query,
+  () => {
+    // 仅当前顶栏作用域为本页时响应，避免切菜单 clear 时旧页面误请求
+    if (listSearch.activeView !== 'unified') return;
+    currentPage.value = 1;
+    pageCache.clear();
+    loadUnifiedMessages();
+  },
+);
+
+const hasActiveFilter = computed(() => readFilter.value !== '' || attachmentFilter.value || accountFilter.value !== '' || !!searchQuery.value);
+
+
 
 /** 是否已选择聚合邮箱（以后端返回的 no_accounts 标志为准） */
 const hasUnifiedAccounts = computed(() => !noAccounts.value);
@@ -475,7 +495,7 @@ onUnmounted(() => {
 // ==================== 数据加载 ====================
 
 function getPageCacheKey() {
-  return `unified::${accountFilter.value}::${readFilter.value}::${attachmentFilter.value}::${currentPage.value}::${pageSize}`;
+  return `unified::${accountFilter.value}::${readFilter.value}::${attachmentFilter.value}::${currentPage.value}::${pageSize}::q:${searchQuery.value}`;
 }
 
 function applyCachedPage(cache: MessagePageCache) {
@@ -509,6 +529,8 @@ async function loadUnifiedMessages() {
   if (accountFilter.value) params.account_filter = accountFilter.value;
   if (readFilter.value) params.read_filter = readFilter.value;
   if (attachmentFilter.value) params.attachment_filter = 'true';
+  // 仅参与聚合的账号 INBOX 缓存搜索（服务端强制白名单）
+  if (searchQuery.value) params.q = searchQuery.value;
   const data = await api.get('/messages/unified', { params }) as any;
   if (version !== loadVersion) return;
   // Outlook 连接异常时，后端返回 reconnecting: true，前端展示友好提示
@@ -1292,4 +1314,26 @@ async function onNasDirConfirmed(targetDir: string) {
   cursor: pointer; text-align: left;
 }
 .att-menu-item:hover { background: var(--bg-hover, rgba(0,0,0,0.05)); }
+
+/* ========== 列表搜索框（邮件/聚合/备份共用风格） ========== */
+
+
+
+
+
+
+
+
+
+
+@media (max-width: 768px) {
+
+}
+
+.mobile-only-inline { display: none; }
+@media (max-width: 768px) {
+  .mobile-only-inline { display: inline-flex; }
+}
+
+.list-empty-hint { font-size: 12px; opacity: 0.65; margin-top: 4px; }
 </style>

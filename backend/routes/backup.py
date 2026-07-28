@@ -258,8 +258,12 @@ async def list_archived_messages(
         default="",
         description="删除筛选：deleted=仅已删除, alive=仅存活, 空=全部",
     ),
+    q: str = Query(default="", description="搜索关键词（当前备份账号/文件夹元数据）"),
 ):
-    """分页查询归档邮件列表（按 date 倒序）"""
+    """分页查询归档邮件列表（按 date 倒序）
+
+    搜索仅命中 message_archive 元数据（主题/发件人/收件人/抄送），不解析 .eml 正文。
+    """
     uid = await get_uid(request)
     result = await get_archived_messages(
         uid,
@@ -268,6 +272,7 @@ async def list_archived_messages(
         page=page,
         page_size=page_size,
         deleted_filter=deleted_filter,
+        q=q,
     )
     return result
 

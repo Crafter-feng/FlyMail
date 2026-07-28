@@ -184,6 +184,9 @@ class MessageListResponse(BaseModel):
   reconnecting: bool = Field(default=False, description="邮箱连接异常时是否正在重连")
   no_accounts: bool = Field(default=False, description="聚合收件箱是否未选择任何账号")
   filter_counts: dict = Field(default={}, description="各筛选条件的计数: {all, unread, read, attachments}")
+  # 缓存搜索元信息（阶段一：仅查本地缓存，不触发 IMAP 搜索）
+  search_query: str = Field(default="", description="当前搜索关键词，空表示未搜索")
+  search_mode: str = Field(default="", description="搜索模式：cache=缓存搜索")
 
 
 class PrefetchMessagesRequest(BaseModel):

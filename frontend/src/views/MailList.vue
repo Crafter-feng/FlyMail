@@ -53,7 +53,7 @@
   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6 9 12 15 18 9"/></svg>
   </button>
   <!-- 桌面端：文件夹名+数量 -->
-  <span v-else class="list-count">{{ mailStore.currentFolderName }} · {{ totalMessages }}封</span>
+  <span v-else class="list-count">{{ searchQuery ? ("搜索 · " + totalMessages + "封") : (mailStore.currentFolderName + " · " + totalMessages + "封") }}</span>
   <!-- 筛选按钮 -->
   <span class="toolbar-divider"></span>
   <button class="filter-btn" :class="{ active: readFilter === '' && !attachmentFilter }" @click="setReadFilter('')">全部 {{ filterCounts.all }}</button>
@@ -95,6 +95,8 @@
   </div>
   </transition>
   </div>
+
+
 
   <!-- 多选模式工具栏（用 template v-else 包裹，保持与 v-if 相邻） -->
   <template v-else>
@@ -157,7 +159,8 @@
   <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
   <rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 4L12 13L2 4"/>
   </svg>
-  <span>暂无邮件</span>
+  <span>{{ searchQuery ? '未找到匹配的邮件' : '暂无邮件' }}</span>
+  <span v-if="searchQuery" class="list-empty-hint">试试其他关键词，或切换文件夹</span>
   </div>
 
   <!-- 邮件列表 -->
@@ -361,6 +364,7 @@ import { openAuthWindowSync, navigateAuthWindow, closeAuthWindow, authWindowBloc
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import draggable from 'vuedraggable';
 import { useMailStore } from '../stores/mail';
+import { useListSearchStore } from '../stores/listSearch';
 import { useUIStore } from '../stores/ui';
 import api from '../utils/api';
 import { providerIcon } from '../utils/provider';
@@ -391,7 +395,24 @@ const readFilter = ref('');
 const attachmentFilter = ref(false);
 const filterCounts = ref({ all: 0, unread: 0, read: 0, attachments: 0 });
 const showMobileFilters = ref(false);
-const hasActiveFilter = computed(() => readFilter.value !== '' || attachmentFilter.value);
+// ===== 列表搜索（顶栏共享，范围由本页请求参数决定） =====
+const listSearch = useListSearchStore();
+const searchQuery = computed(() => listSearch.query);
+
+watch(
+  () => listSearch.query,
+  () => {
+    // 仅当前顶栏作用域为本页时响应，避免切菜单 clear 时旧页面误请求
+    if (listSearch.activeView !== 'mail') return;
+    currentPage.value = 1;
+    pageCache.clear();
+    loadMessages();
+  },
+);
+
+const hasActiveFilter = computed(() => readFilter.value !== '' || attachmentFilter.value || !!searchQuery.value);
+
+
 
 const syncing = ref(false);
 const rebuilding = ref(false);
@@ -634,7 +655,8 @@ function handleWsMessage(data: any) {
 }
 
 function getPageCacheKey() {
-  return `${mailStore.currentAccountId}::${mailStore.currentFolder}::${currentPage.value}::${pageSize}`;
+  // 缓存 key 必须包含搜索词，避免搜索结果与普通列表互相污染
+  return `${mailStore.currentAccountId}::${mailStore.currentFolder}::${currentPage.value}::${pageSize}::rf:${readFilter.value}::af:${attachmentFilter.value ? 1 : 0}::q:${searchQuery.value}`;
 }
 
 function applyCachedPage(cache: MessagePageCache) {
@@ -662,6 +684,8 @@ watch(
   currentPage.value = 1;
   readFilter.value = '';
   attachmentFilter.value = false;
+  // 切换账号/文件夹时清空搜索，避免范围错乱
+  listSearch.clear();
   pageCache.clear();
   loadMessages();
   }
@@ -829,6 +853,8 @@ async function loadMessages() {
   if (mailStore.currentAccountId) params.account_id = mailStore.currentAccountId;
   if (readFilter.value) params.read_filter = readFilter.value;
   if (attachmentFilter.value) params.attachment_filter = 'true';
+  // 仅当前账号 + 当前文件夹缓存搜索
+  if (searchQuery.value) params.q = searchQuery.value;
   const data = await api.get('/messages', { params }) as any;
   // 只接受最新版本的结果，丢弃旧请求的响应
   if (version !== loadVersion) return;
@@ -845,12 +871,14 @@ async function loadMessages() {
   filterCounts.value = data.filter_counts;
   }
   // 用 list_messages API 返回的数据更新侧边栏文件夹计数
-  // 收件箱显示未读数，其他文件夹显示邮件总数
+  // 搜索结果 total 是过滤后数量，绝不能写回侧边栏
+  if (!searchQuery.value) {
   mailStore.updateFolderCounts(
   mailStore.currentFolder,
   data.total || 0,
   data.unread_total || 0,
   );
+  }
   } catch (e) {
   if (version !== loadVersion) return;
   console.error('加载邮件失败:', e);
@@ -2321,4 +2349,15 @@ async function onNasDirConfirmed(targetDir: string) {
 .att-menu-item:hover {
   background: var(--bg-hover, rgba(0, 0, 0, 0.05));
 }
+
+/* ========== 列表搜索框（邮件/聚合/备份共用风格） ========== */
+@media (max-width: 768px) {
+}
+
+.mobile-only-inline { display: none; }
+@media (max-width: 768px) {
+  .mobile-only-inline { display: inline-flex; }
+}
+
+.list-empty-hint { font-size: 12px; opacity: 0.65; margin-top: 4px; }
 </style>

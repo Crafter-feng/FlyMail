@@ -31,7 +31,7 @@
   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6 9 12 15 18 9"/></svg>
   </button>
   <!-- 桌面端：文件夹名+数量 -->
-  <span v-else class="list-count">{{ currentFolderName }} · {{ total }}封</span>
+  <span v-else class="list-count">{{ searchQuery ? ("搜索 · " + total + "封") : (currentFolderName + " · " + total + "封") }}</span>
   <span class="toolbar-divider"></span>
   <!-- 桌面端：内联筛选按钮 -->
   <template v-if="!isMobile">
@@ -68,6 +68,7 @@
   </transition>
   </div>
 
+
   <!-- iOS风格底部弹出文件夹选择（移动端） -->
   <transition name="sheet">
   <div v-if="showFolderSheet" class="sheet-backdrop" @click.self="showFolderSheet = false">
@@ -103,8 +104,8 @@
   <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
   </svg>
-  <p>暂无备份邮件</p>
-  <p class="empty-hint">点击右上角"立即备份"，将当前邮箱邮件归档到本地</p>
+  <p>{{ searchQuery ? '未找到匹配的备份邮件' : '暂无备份邮件' }}</p>
+  <p class="empty-hint">{{ searchQuery ? '仅搜索当前备份账号与文件夹的归档元数据' : '点击右上角"立即备份"，将当前邮箱邮件归档到本地' }}</p>
   </div>
 
   <!-- 列表项：单行水平布局，与 MailList 视觉一致 -->
@@ -271,6 +272,7 @@ import api from '../utils/api';
 import { renderMailBody, handleMailLinkClick } from '../utils/sanitize';
 import { providerIcon } from '../utils/provider';
 import { useBackupStore } from '../stores/backup';
+import { useListSearchStore } from '../stores/listSearch';
 import { useUIStore } from '../stores/ui';
 import { exportMailToPDF } from '../utils/export-pdf';
 import { getInitial, getAvatarColor, formatDate, formatDetailDate, formatFileSize, formatAddressList, downloadAttachment as downloadAttachmentFile } from '../utils/mail-helpers';
@@ -295,6 +297,21 @@ const accounts = ref<BackupStatus['accounts']>([]);
 // 筛选状态：文件夹来自 backupStore（侧边栏选中），账号和删除筛选为本地状态
 const selectedAccount = ref('');
 const filterDeleted = ref('');
+
+// ===== 列表搜索（顶栏共享） =====
+const listSearch = useListSearchStore();
+const searchQuery = computed(() => listSearch.query);
+
+watch(
+  () => listSearch.query,
+  () => {
+    // 仅当前顶栏作用域为本页时响应，避免切菜单 clear 时旧页面误请求
+    if (listSearch.activeView !== 'backup') return;
+    page.value = 1;
+    loadList();
+  },
+);
+
 
 // 详情状态
 const selectedMessage = ref<ArchivedMessage | null>(null);
@@ -364,6 +381,8 @@ function selectBackupFolder(folder: string) {
 // 监听侧边栏文件夹切换 → 重新加载列表
 watch(() => backupStore.currentFolder, () => {
   page.value = 1;
+  // 切换备份文件夹时清空搜索
+  listSearch.clear();
   loadList();
 });
 
@@ -391,6 +410,8 @@ async function loadList() {
   // 文件夹来自 store（侧边栏选中）
   if (backupStore.currentFolder) params.folder = backupStore.currentFolder;
   if (filterDeleted.value) params.deleted_filter = filterDeleted.value;
+  // 仅当前备份账号 + 当前文件夹元数据搜索
+  if (searchQuery.value) params.q = searchQuery.value;
 
   const data = await api.get('/backup/messages', { params }) as any;
   messages.value = data.messages || [];
@@ -433,6 +454,8 @@ function setFilterDeleted(value: string) {
 async function switchAccount(accountId: string) {
   selectedAccount.value = accountId;
   page.value = 1;
+  // 切换备份账号时清空搜索，避免跨账号结果
+  listSearch.clear();
   // 加载该账号的文件夹统计（5个核心文件夹固定，只是更新计数）
   await backupStore.loadFolders(accountId);
   // currentFolder 默认是 INBOX，一定在5个核心文件夹中，直接加载列表
@@ -1330,4 +1353,22 @@ function downloadAttachment(att: BackupAttachment) {
   .filter-dropdown-enter-active, .filter-dropdown-leave-active { transition: opacity 0.2s; }
   .filter-dropdown-enter-from, .filter-dropdown-leave-to { opacity: 0; }
 }
+
+/* ========== 列表搜索框（邮件/聚合/备份共用风格） ========== */
+
+
+
+
+
+
+
+
+
+
+.mobile-only-inline { display: none; }
+@media (max-width: 768px) {
+
+  .mobile-only-inline { display: inline-flex; }
+}
+
 </style>

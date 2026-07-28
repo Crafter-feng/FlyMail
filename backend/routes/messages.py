@@ -497,6 +497,7 @@ async def list_unified_messages(
     account_filter: str = Query(default="", description="按账号ID筛选，空=全部"),
     read_filter: str = Query(default="", description="已读筛选: unread=仅未读, read=仅已读, 空=全部"),
     attachment_filter: bool = Query(default=False, description="附件筛选: true=仅有附件的邮件"),
+    q: str = Query(default="", description="搜索关键词（仅聚合账号 INBOX 缓存）"),
 ):
     """获取聚合收件箱邮件列表
 
@@ -534,6 +535,7 @@ async def list_unified_messages(
         account_filter=account_filter,
         read_filter=read_filter,
         attachment_filter=attachment_filter,
+        q=q,
     )
 
     # 为每封邮件附加账号信息（邮箱地址、平台类型）
@@ -543,15 +545,17 @@ async def list_unified_messages(
             msg["account_email"] = acc.email
             msg["account_provider"] = acc.provider
 
-    # 获取聚合统计（从 folder_stats 汇总，更准确）
-    stats = await get_unified_inbox_stats(user_uid, unified_ids)
-    # 如果 folder_stats 有数据，用其替换 COUNT 的结果（更准确）
-    if stats["total_count"] > 0:
-        result["total"] = stats["total_count"]
-        result["unread_total"] = stats["unread_count"]
+    # 非搜索模式：用 folder_stats 汇总替换 COUNT（更接近 IMAP 真实总数）
+    # 搜索模式：保留关键词过滤后的 total，不能被全量统计覆盖
+    search_q = (q or "").strip()
+    if not search_q:
+        stats = await get_unified_inbox_stats(user_uid, unified_ids)
+        if stats["total_count"] > 0:
+            result["total"] = stats["total_count"]
+            result["unread_total"] = stats["unread_count"]
 
     # 获取各筛选条件的计数（前端用于显示 全部20 未读10 已读10 附件2）
-    # 传入 account_filter 使计数跟随账号筛选变化
+    # 传入 account_filter 使计数跟随账号筛选变化；搜索不改变筛选芯片计数
     result["filter_counts"] = await get_unified_inbox_filter_counts(user_uid, unified_ids, account_filter)
 
     return result
@@ -569,6 +573,7 @@ async def list_messages(
     account_id: str = Query(default="", description="指定账号ID，为空则使用第一个账号"),
     read_filter: str = Query(default="", description="已读筛选：unread=仅未读, read=仅已读, 空=全部"),
     attachment_filter: str = Query(default="", description="附件筛选：true=仅有附件"),
+    q: str = Query(default="", description="搜索关键词（仅当前账号当前文件夹缓存）"),
 ):
     """获取指定文件夹的邮件列表，支持分页和筛选
 
@@ -590,24 +595,29 @@ async def list_messages(
     has_attachment_filter = attachment_filter.lower() == "true"
 
     # 1. 先从数据库缓存返回（瞬间）
+    search_q = (q or "").strip()
     cached = await get_cached_messages_by_folder(
         user_uid, account.id, folder, page, page_size,
         read_filter=read_filter, attachment_filter=has_attachment_filter,
+        q=search_q,
     )
     # 获取筛选计数
     filter_counts = await get_folder_filter_counts(user_uid, account.id, folder)
-    if cached["messages"]:
-        # 缓存有数据，直接返回，保持切换文件夹/分页为毫秒级响应。
+    # 搜索模式：只查缓存，无命中也直接返回，不回落 IMAP 首页
+    if cached["messages"] or search_q:
+        # 非搜索：缓存命中时直接返回，保持切换文件夹/分页为毫秒级响应。
         # 新邮件由后台实时监听链路（IDLE/STATUS/NOOP）同步；这里仅做统计校验，不再主动补拉。
-        create_background_task(_verify_folder_stats_background(account, folder), name="verify_folder_stats")
+        # 搜索：跳过后台统计校验/补全，避免与搜索结果互相干扰
+        if not search_q:
+            create_background_task(_verify_folder_stats_background(account, folder), name="verify_folder_stats")
 
-        # 缓存完整性检测：如果缓存行数少于 IMAP 总数，后台触发补全同步
-        cached_count = cached.get("cached_count", 0)
-        stats_total = cached.get("total", 0)
-        if 0 < cached_count < stats_total:
-            create_background_task(_sync_missing_background(account, folder), name="sync_missing")
+            # 缓存完整性检测：如果缓存行数少于 IMAP 总数，后台触发补全同步
+            cached_count = cached.get("cached_count", 0)
+            stats_total = cached.get("total", 0)
+            if 0 < cached_count < stats_total:
+                create_background_task(_sync_missing_background(account, folder), name="sync_missing")
 
-        return {
+        payload = {
             "messages": cached["messages"],
             "total": cached["total"],
             "unread_total": cached["unread_total"],
@@ -616,6 +626,11 @@ async def list_messages(
             "account_id": account.id,
             "filter_counts": filter_counts,
         }
+        # 透传搜索元信息，方便前端展示
+        if search_q:
+            payload["search_query"] = cached.get("search_query") or search_q
+            payload["search_mode"] = cached.get("search_mode") or "cache"
+        return payload
 
     # 2. 缓存为空（首次），同步等待 IMAP 获取并写入缓存
     try:

@@ -661,10 +661,54 @@ async def get_cached_is_read(account_id: str, uid: int, folder: str) -> bool:
     return bool(row[0]) if row else False
 
 
+def _normalize_search_query(q: str | None, max_len: int = 100) -> str:
+    """规范化搜索关键词：去首尾空白并限制长度。"""
+    text = (q or "").strip()
+    if len(text) > max_len:
+        text = text[:max_len]
+    return text
+
+
+def _like_pattern(q: str) -> str:
+    """生成 SQL LIKE 模式，转义 %、_、反斜杠，防止被当作通配符。"""
+    bs = chr(92)
+    escaped = q.replace(bs, bs + bs).replace("%", bs + "%").replace("_", bs + "_")
+    return "%" + escaped + "%"
+
+
+def _append_message_search_conditions(
+    conditions: list,
+    params: list,
+    q: str,
+    *,
+    include_cc: bool = False,
+    include_body: bool = False,
+) -> None:
+    """追加主题/发件人/收件人（可选抄送、正文）模糊匹配条件。"""
+    if not q:
+        return
+    like = _like_pattern(q)
+    esc = " ESCAPE '" + chr(92) + "'"
+    parts = [
+        "IFNULL(subject,'') LIKE ?" + esc,
+        "IFNULL(from_addr,'') LIKE ?" + esc,
+        "IFNULL(to_addr,'') LIKE ?" + esc,
+    ]
+    params.extend([like, like, like])
+    if include_cc:
+        parts.append("IFNULL(cc,'') LIKE ?" + esc)
+        params.append(like)
+    if include_body:
+        parts.append("IFNULL(body_text,'') LIKE ?" + esc)
+        params.append(like)
+    conditions.append("(" + " OR ".join(parts) + ")")
+
+
 async def get_cached_messages_by_folder(
     user_uid: str, account_id: str, folder: str,
     page: int = 1, page_size: int = 40,
     read_filter: str = "", attachment_filter: bool = False,
+    q: str = "",
 ) -> dict:
     """从缓存分页读取邮件列表（按邮件时间倒序，时间相同时按 UID 倒序）
 
@@ -675,10 +719,12 @@ async def get_cached_messages_by_folder(
     参数：
         read_filter: "unread"=仅未读, "read"=仅已读, 空=全部
         attachment_filter: True=仅有附件的邮件
+        q: 搜索关键词（主题/发件人/收件人/抄送/已缓存正文），空=不搜索
     """
     db = await get_db()
+    q = _normalize_search_query(q)
 
-    # 构建 WHERE 条件（筛选模式下直接从缓存 COUNT，不依赖 folder_stats）
+    # 构建 WHERE 条件（筛选/搜索模式下直接从缓存 COUNT，不依赖 folder_stats）
     conditions = ["user_uid = ?", "account_id = ?", "folder = ?"]
     params: list = [user_uid, account_id, folder]
 
@@ -690,8 +736,13 @@ async def get_cached_messages_by_folder(
     if attachment_filter:
         conditions.append("has_attachments = 1")
 
+    # 仅当前账号 + 当前文件夹
+    _append_message_search_conditions(
+        conditions, params, q, include_cc=True, include_body=True
+    )
+
     where_clause = " AND ".join(conditions)
-    has_filter = read_filter or attachment_filter
+    has_filter = bool(read_filter or attachment_filter or q)
 
     # 查询当前文件夹实际已缓存的邮件数量
     cursor = await db.execute(
@@ -757,6 +808,9 @@ async def get_cached_messages_by_folder(
         stats = await get_folder_stats(account_id, folder)
         result["cached_count"] = filtered_total
         result["stats_updated_at"] = stats["updated_at"]
+    if q:
+        result["search_query"] = q
+        result["search_mode"] = "cache"
     return result
 
 
@@ -1165,6 +1219,7 @@ async def get_unified_inbox_messages(
     account_filter: str = "",
     read_filter: str = "",
     attachment_filter: bool = False,
+    q: str = "",
 ) -> dict:
     """从缓存中聚合多个账号的收件箱邮件，按时间倒序排列
 
@@ -1173,22 +1228,24 @@ async def get_unified_inbox_messages(
 
     参数：
         user_uid: 飞牛OS用户ID
-        account_ids: 要聚合的账号ID列表
+        account_ids: 要聚合的账号ID列表（搜索也严格限定在此白名单内）
         page: 页码（从1开始）
         page_size: 每页数量
         account_filter: 按账号ID进一步筛选，空=全部
         read_filter: "unread"=仅未读, "read"=仅已读, 空=全部
         attachment_filter: True=仅有附件的邮件
+        q: 搜索关键词（仅聚合账号的 INBOX）
     """
     if not account_ids:
         return {"messages": [], "total": 0, "unread_total": 0, "page": page, "page_size": page_size}
 
     db = await get_db()
+    q = _normalize_search_query(q)
     # where_clause 通过字符串拼接构建，但 conditions 列表中的条件均为硬编码字符串（不接受用户输入），SQL 注入安全
     conditions = ["user_uid = ?", "folder = 'INBOX'"]
     params: list = [user_uid]
 
-    # 限定聚合的账号范围
+    # 限定聚合的账号范围（未参与聚合的账号不会进入结果）
     placeholders = ",".join("?" * len(account_ids))
     conditions.append(f"account_id IN ({placeholders})")
     params.extend(account_ids)
@@ -1207,6 +1264,11 @@ async def get_unified_inbox_messages(
     # 按附件筛选
     if attachment_filter:
         conditions.append("has_attachments = 1")
+
+    # 聚合范围内缓存搜索
+    _append_message_search_conditions(
+        conditions, params, q, include_cc=True, include_body=True
+    )
 
     where_clause = " AND ".join(conditions)
 
@@ -1247,13 +1309,17 @@ async def get_unified_inbox_messages(
         for row in rows
     ]
 
-    return {
+    result = {
         "messages": messages,
         "total": total,
         "unread_total": unread_total,
         "page": page,
         "page_size": page_size,
     }
+    if q:
+        result["search_query"] = q
+        result["search_mode"] = "cache"
+    return result
 
 
 async def get_unified_inbox_filter_counts(user_uid: str, account_ids: list, account_filter: str = "") -> dict:
@@ -1684,14 +1750,17 @@ async def get_archived_messages(
     page: int = 1,
     page_size: int = 40,
     deleted_filter: str = "",
+    q: str = "",
 ) -> dict:
     """分页查询归档邮件列表（按 date 倒序）
 
     folder 参数支持核心类别路径（INBOX/Sent/Drafts/Junk/Trash），
     会自动匹配所有映射到该类别的 IMAP 路径（含网易 Modified UTF-7 编码）。
     deleted_filter: ""=全部, "deleted"=仅服务器已删除, "alive"=仅存活
+    q: 搜索关键词（主题/发件人/收件人/抄送；不扫 .eml 正文）
     """
     db = await get_db()
+    q = _normalize_search_query(q)
     where = ["user_uid = ?"]
     params: list = [user_uid]
 
@@ -1732,6 +1801,11 @@ async def get_archived_messages(
     elif deleted_filter == "alive":
         where.append("is_deleted_on_server = 0")
 
+    # 备份归档元数据搜索（范围由上方 account_id/folder/user_uid 锁定）
+    _append_message_search_conditions(
+        where, params, q, include_cc=True, include_body=False
+    )
+
     where_clause = " AND ".join(where)
 
     # 查总数
@@ -1753,12 +1827,16 @@ async def get_archived_messages(
     columns = [d[0] for d in cursor.description]
     messages = [dict(zip(columns, row)) for row in rows]
 
-    return {
+    result = {
         "messages": messages,
         "total": total,
         "page": page,
         "page_size": page_size,
     }
+    if q:
+        result["search_query"] = q
+        result["search_mode"] = "archive_meta"
+    return result
 
 
 async def get_archived_message_by_uid(user_uid: str, account_id: str, folder: str, uid: int) -> dict | None:
