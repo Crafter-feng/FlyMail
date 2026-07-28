@@ -185,38 +185,103 @@ logger = get_logger("cache")
 BODY_PREVIEW_ENRICH_MAX = 50
 
 
-async def enrich_new_mail_body_previews(receiver, folder: str, items: list, max_items: int = BODY_PREVIEW_ENRICH_MAX) -> None:
-    """为通知摘要补齐 body_preview。
+def _item_needs_detail_enrich(it: dict) -> bool:
+    """列表摘要缺正文或关键元信息时，需要拉详情补齐。"""
+    if int(it.get("uid") or 0) <= 0:
+        return False
+    if not str(it.get("body_preview") or "").strip():
+        return True
+    # 部分 IMAP 对 HEADER.FIELDS 返回空字面量：主题/发件人/收件人/时间为空，
+    # 但 BODY.PEEK[] 详情里是完整的——必须补齐，否则通知/缓存只剩正文预览。
+    for key in ("subject", "from_addr", "to_addr", "mail_date"):
+        if not str(it.get(key) or "").strip():
+            return True
+    return False
 
-    列表/增量同步只 FETCH 头字段，Message 无正文，导致第三方通知缺正文。
-    此处仅对「真正新增且预览为空」的少量邮件按 UID 拉详情（BODY.PEEK[]，不改 Seen）。
+
+def _fill_blank(it: dict, key: str, value) -> bool:
+    """仅在目标字段为空时写入，返回是否写入。"""
+    if str(it.get(key) or "").strip():
+        return False
+    text = str(value or "").strip()
+    if not text:
+        return False
+    it[key] = text
+    return True
+
+
+def apply_new_mail_items_to_messages(messages, items: list) -> int:
+    """把通知摘要补齐结果写回 Message，避免空头字段落入 cached_messages。"""
+    by_uid = {
+        int(it.get("uid") or 0): it
+        for it in (items or [])
+        if int(it.get("uid") or 0) > 0
+    }
+    if not by_uid or not messages:
+        return 0
+    patched = 0
+    for m in messages:
+        uid = int(getattr(m, "uid", 0) or 0)
+        it = by_uid.get(uid)
+        if not it:
+            continue
+        changed = False
+        if not str(getattr(m, "subject", "") or "").strip() and str(it.get("subject") or "").strip():
+            m.subject = it["subject"]
+            changed = True
+        if not str(getattr(m, "from_addr", "") or "").strip() and str(it.get("from_addr") or "").strip():
+            m.from_addr = it["from_addr"]
+            changed = True
+        if not str(getattr(m, "to_addr", "") or "").strip() and str(it.get("to_addr") or "").strip():
+            m.to_addr = it["to_addr"]
+            changed = True
+        if not str(getattr(m, "cc", "") or "").strip() and str(it.get("cc") or "").strip():
+            m.cc = it["cc"]
+            changed = True
+        if not str(getattr(m, "date", "") or "").strip() and str(it.get("mail_date") or "").strip():
+            m.date = it["mail_date"]
+            changed = True
+        if not str(getattr(m, "message_id", "") or "").strip() and str(it.get("rfc_message_id") or "").strip():
+            m.message_id = it["rfc_message_id"]
+            changed = True
+        if changed:
+            patched += 1
+    return patched
+
+
+async def enrich_new_mail_body_previews(receiver, folder: str, items: list, max_items: int = BODY_PREVIEW_ENRICH_MAX) -> None:
+    """为通知摘要补齐 body_preview，并回填空的主题/发件人/收件人/时间。
+
+    列表/增量同步只 FETCH 头字段：
+    - Message 无正文 → 第三方通知缺正文
+    - 少数邮件 HEADER.FIELDS 为空字面量 → 主题等元信息为空，但详情里正常
+
+    此处对「真正新增且缺预览或缺元信息」的少量邮件按 UID 拉详情（BODY.PEEK[]，不改 Seen）。
     失败不抛错，保证同步与通知主路径不受影响。
     """
     if not items or receiver is None:
         return
 
-    need = [
-        it for it in items
-        if not str(it.get("body_preview") or "").strip() and int(it.get("uid") or 0) > 0
-    ]
+    need = [it for it in items if _item_needs_detail_enrich(it)]
     if not need:
         return
 
-    # 最新优先；超出上限的仍发通知，只是可能无正文截取
+    # 最新优先；超出上限的仍发通知，只是可能仍缺正文/元信息
     limit = max(1, int(max_items or BODY_PREVIEW_ENRICH_MAX))
     need_sorted = sorted(need, key=lambda x: int(x.get("uid") or 0), reverse=True)
     skipped = max(0, len(need_sorted) - limit)
     need = need_sorted[:limit]
     if skipped:
         logger.info(
-            "新邮件正文预览补齐超限: folder=%s total=%d limit=%d skipped=%d（超出部分仍推送，可能无正文）",
+            "新邮件详情补齐超限: folder=%s total=%d limit=%d skipped=%d（超出部分仍推送，可能缺正文/元信息）",
             folder or "INBOX",
             len(need_sorted),
             limit,
             skipped,
         )
     folder_path = folder or "INBOX"
-    filled = 0
+    filled_preview = 0
+    filled_meta = 0
     for it in need:
         uid = int(it.get("uid") or 0)
         try:
@@ -225,24 +290,28 @@ async def enrich_new_mail_body_previews(receiver, folder: str, items: list, max_
                 getattr(detail, "body_text", "") or "",
                 getattr(detail, "body_html", "") or "",
             )
-            if preview:
+            if preview and not str(it.get("body_preview") or "").strip():
                 it["body_preview"] = preview
-                filled += 1
-            # 详情里若有更完整元信息，顺带补齐（不覆盖已有非空）
-            if not str(it.get("cc") or "").strip():
-                cc_val = getattr(detail, "cc", "") or ""
-                if cc_val:
-                    it["cc"] = cc_val
-            if not str(it.get("rfc_message_id") or "").strip():
-                mid = getattr(detail, "message_id", "") or ""
-                if mid:
-                    it["rfc_message_id"] = mid
+                filled_preview += 1
+
+            # 详情元信息回填（不覆盖已有非空）——修复空主题/发件人通知
+            meta_changed = False
+            meta_changed |= _fill_blank(it, "subject", getattr(detail, "subject", "") or "")
+            meta_changed |= _fill_blank(it, "from_addr", getattr(detail, "from_addr", "") or "")
+            meta_changed |= _fill_blank(it, "to_addr", getattr(detail, "to_addr", "") or "")
+            meta_changed |= _fill_blank(it, "cc", getattr(detail, "cc", "") or "")
+            meta_changed |= _fill_blank(it, "mail_date", getattr(detail, "date", "") or "")
+            meta_changed |= _fill_blank(it, "rfc_message_id", getattr(detail, "message_id", "") or "")
+            if meta_changed:
+                filled_meta += 1
+            if not bool(it.get("has_attachments")) and bool(getattr(detail, "has_attachments", False)):
+                it["has_attachments"] = True
         except Exception as e:
-            logger.debug("补拉正文预览失败 uid=%s folder=%s: %s", uid, folder_path, e)
-    if filled:
+            logger.debug("补拉通知详情失败 uid=%s folder=%s: %s", uid, folder_path, e)
+    if filled_preview or filled_meta:
         logger.info(
-            "新邮件正文预览已补齐: folder=%s, filled=%d/%d",
-            folder_path, filled, len(need),
+            "新邮件通知详情已补齐: folder=%s, preview=%d, meta=%d, total=%d",
+            folder_path, filled_preview, filled_meta, len(need),
         )
 
 
@@ -517,13 +586,15 @@ async def _do_sync(receiver, account: Account, folder: str, force_full: bool = F
         inserted_count = sum(1 for m in messages if m.uid not in existing_uids)
 
         new_mail_items = messages_to_new_mail_items(messages, account, folder, existing_uids)
-        # 列表同步无正文：增量场景为第三方通知补拉纯文本预览
+        # 列表同步无正文/偶发空头：增量场景为第三方通知补拉详情
         # 首次/全量同步 new_mail_items 可能极多且通常不发通知，跳过 BODY.PEEK
         if new_mail_items and max_uid > 0 and len(new_mail_items) <= 100:
             try:
                 await enrich_new_mail_body_previews(receiver, folder, new_mail_items)
+                # 写回 Message，避免空主题/发件人进入缓存与后续列表
+                apply_new_mail_items_to_messages(messages, new_mail_items)
             except Exception as e:
-                logger.debug("enrich body_preview 跳过: %s", e)
+                logger.debug("enrich 通知详情跳过: %s", e)
 
 
         # 用 UNSEEN 校正本次拉取邮件的 is_read 状态
