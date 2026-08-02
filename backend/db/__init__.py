@@ -1386,6 +1386,28 @@ async def get_unified_inbox_stats(user_uid: str, account_ids: list) -> dict:
     }
 
 
+# ==================== MCP Token 查询 ====================
+
+
+async def get_user_uid_by_mcp_token(token: str) -> str | None:
+    """通过 MCP token 查找用户 ID。
+
+    Args:
+        token: Bearer token 值
+
+    Returns:
+        匹配的 user_uid，未找到返回 None
+    """
+    db = await get_db()
+    cursor = await db.execute(
+        "SELECT user_uid FROM user_settings WHERE key='mcp_token' AND value=?",
+        (token,),
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    return row[0] if row else None
+
+
 # ==================== 用户级配置 ====================
 
 

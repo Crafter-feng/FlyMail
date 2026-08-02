@@ -47,6 +47,7 @@ from routes.notify_settings import router as notify_settings_router
 from routes.settings import router as settings_router
 from routes.signatures import router as signatures_router
 from routes.websocket import router as websocket_router
+from flymail_mcp.server import server as mcp_server
 
 
 # ==================== 日志配置 ====================
@@ -165,6 +166,17 @@ app.include_router(notify_settings_router)
 app.include_router(settings_router)
 app.include_router(signatures_router)
 app.include_router(websocket_router)
+
+# ==================== MCP 子应用挂载 ====================
+
+# Mount MCP SSE app at /mcp.  Auth (Bearer token) is handled inside
+# the MCPServer sub-app via FlyMailTokenVerifier.
+_mcp_app = mcp_server.sse_app(
+    sse_path="/sse",
+    message_path="/messages/",
+)
+app.mount("/mcp", _mcp_app)
+logger.info("MCP 子应用已挂载: /mcp/sse")
 
 
 # ==================== 通用端点 ====================

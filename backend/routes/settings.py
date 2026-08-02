@@ -4,11 +4,19 @@ OAuth 授权已迁移到 Cloudflare Broker，本地不再保存客户端密钥�
 Gmail 网络代理按 user_uid 存 user_settings，连接时经 Credentials.extra 注入。
 """
 import asyncio
+import secrets
 import time
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Request
 
+from db import (
+    get_accounts,
+    get_user_setting,
+    get_user_settings,
+    set_user_setting,
+    set_user_settings,
+)
 from services.settings import (
     get_gmail_proxy_settings,
     save_gmail_proxy_settings,
@@ -21,6 +29,9 @@ from schemas import (
     UnifiedSettingsRequest,
     ProxyTestRequest,
     ProxyTestResponse,
+    McpSettingsRequest,
+    McpSettingsResponse,
+    McpTokenResponse,
 )
 
 router = APIRouter(tags=["设置"])
@@ -37,7 +48,6 @@ async def reset_gmail_idle_connections(user_uid: str = ""):
     if not user_uid:
         return
     try:
-        from db import get_accounts
         from services.idle_manager import idle_manager
 
         accounts = await get_accounts(user_uid)
@@ -175,8 +185,6 @@ async def get_unified_settings(request: Request):
 
     unified_account_ids 按 user_uid 存储在 user_settings 表，避免多用户互相覆盖
     """
-    from db import get_accounts, get_user_settings
-
     uid = await get_uid(request)
     accounts = await get_accounts(uid)
 
@@ -206,8 +214,6 @@ async def save_unified_settings(request: Request, body: UnifiedSettingsRequest):
 
     unified_account_ids 按 user_uid 存储在 user_settings 表，避免多用户互相覆盖
     """
-    from db import set_user_settings
-
     uid = await get_uid(request)
     account_ids = body.account_ids
 
@@ -215,3 +221,52 @@ async def save_unified_settings(request: Request, body: UnifiedSettingsRequest):
     await set_user_settings(uid, {"unified_account_ids": account_ids})
 
     return {"success": True}
+
+
+# ==================== MCP 服务器设置 ====================
+
+
+@router.get("/api/settings/mcp", response_model=McpSettingsResponse, summary="获取 MCP 服务器配置")
+async def get_mcp_settings(request: Request):
+    """获取 MCP 服务器配置（令牌掩码返回）"""
+    uid = await get_uid(request)
+    settings = await get_user_settings(uid, ["mcp_enabled", "mcp_port", "mcp_token"])
+    token = settings.get("mcp_token", "")
+    return McpSettingsResponse(
+        enabled=settings.get("mcp_enabled") == "true",
+        port=int(settings.get("mcp_port", "9000")),
+        has_token=bool(token),
+        token=token[:12] + "..." if token else "",
+    )
+
+
+@router.put("/api/settings/mcp", summary="更新 MCP 服务器配置")
+async def update_mcp_settings(request: Request, body: McpSettingsRequest):
+    """更新 MCP 服务器配置，首次启用时自动生成令牌"""
+    uid = await get_uid(request)
+
+    # 首次启用 → 自动生成 token
+    token = await get_user_setting(uid, "mcp_token")
+    if body.enabled and not token:
+        token = "fm_mcp_" + secrets.token_urlsafe(32)
+        await set_user_settings(uid, {"mcp_token": token})
+
+    await set_user_settings(uid, {
+        "mcp_enabled": "true" if body.enabled else "false",
+        "mcp_port": str(body.port),
+    })
+
+    return {
+        "success": True,
+        "token": token[:12] + "..." if token else "",
+        "has_token": bool(token),
+    }
+
+
+@router.post("/api/settings/mcp/regenerate", response_model=McpTokenResponse, summary="刷新 MCP 令牌")
+async def regenerate_mcp_token(request: Request):
+    """刷新 MCP 令牌，旧令牌立即失效"""
+    uid = await get_uid(request)
+    token = "fm_mcp_" + secrets.token_urlsafe(32)
+    await set_user_setting(uid, "mcp_token", token)
+    return McpTokenResponse(success=True, token=token)

@@ -11,3 +11,4 @@ python-multipart>=0.0.6
 apscheduler>=3.10.0
 sqlalchemy>=2.0.0
 Pillow>=10.0.0  # 第三方通知「图片模式」卡片渲染（Telegram 直传 / Bark 经图床）
+mcp>=1.0.0  # MCP SDK：Model Context Protocol 服务器

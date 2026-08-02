@@ -10,6 +10,7 @@
 启动后访问:
     http://localhost:8080/api/health
     http://localhost:8080/docs  (Swagger UI)
+    http://localhost:8080/mcp/sse  (MCP Server)
     http://localhost:51010/api/auth/callback  (OAuth 回调端口)
 """
 import asyncio
@@ -48,10 +49,11 @@ if __name__ == "__main__":
     from utils.logger import get_logger
     logger = get_logger("dev")
     logger.info("飞邮 FlyMail 本地开发服务器")
-    logger.info("地址: http://localhost:%d", port)
-    logger.info("API:  http://localhost:%d/api/health", port)
-    logger.info("文档: http://localhost:%d/docs", port)
-    logger.info("OAuth回调: http://localhost:%d/api/auth/callback", oauth_port)
+    logger.info("地址:   http://localhost:%d", port)
+    logger.info("API:    http://localhost:%d/api/health", port)
+    logger.info("文档:   http://localhost:%d/docs", port)
+    logger.info("MCP:    http://localhost:%d/mcp/sse", port)
+    logger.info("OAuth:  http://localhost:%d/api/auth/callback", oauth_port)
     try:
         asyncio.run(run_dev_servers(port, oauth_port))
     except KeyboardInterrupt:

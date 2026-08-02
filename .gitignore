@@ -1,4 +1,4 @@
-﻿# 渚濊禆
+# 渚濊禆
 node_modules/
 package-lock.json
 __pycache__/
@@ -48,6 +48,8 @@ Thumbs.db
 # 杩愯鏃舵暟鎹簱鏂囦欢锛堜笉搴旂撼鍏ョ増鏈帶鍒讹級
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 
 # 鏈湴涓存椂娴嬭瘯 / 琛ヤ竵鑴氭湰锛堜笉涓婁紶 GitHub锛?
 backend/tests/

@@ -461,3 +461,26 @@ class ContactStatsResponse(BaseModel):
   """联系人往来邮件统计"""
   count: int = Field(default=0, description="往来邮件总数")
   last_date: str = Field(default="", description="最近一次联系时间")
+
+
+# ==================== MCP 设置相关 ====================
+
+
+class McpSettingsRequest(BaseModel):
+  """更新 MCP 服务器配置请求"""
+  enabled: bool = Field(description="是否启用 MCP 服务器")
+  port: int = Field(default=9000, ge=1024, le=65535, description="独立运行端口")
+
+
+class McpSettingsResponse(BaseModel):
+  """MCP 服务器配置响应"""
+  enabled: bool = Field(description="是否启用")
+  port: int = Field(default=9000, description="端口")
+  has_token: bool = Field(description="是否已配置令牌")
+  token: str = Field(default="", description="令牌（掩码返回）")
+
+
+class McpTokenResponse(BaseModel):
+  """刷新 MCP token 响应"""
+  success: bool = Field(description="是否成功")
+  token: str = Field(description="新生成的完整 token")

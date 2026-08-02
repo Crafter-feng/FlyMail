@@ -689,6 +689,187 @@
   </transition>
   </div>
 
+  <!-- ==================== MCP 服务器设置（可折叠） ==================== -->
+  <div class="provider-card">
+  <button class="gmail-toggle" @click="mcpOpen = !mcpOpen">
+  <div class="gmail-toggle-left">
+  <div class="gmail-toggle-icon" style="background: linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%); color: #2E7D32;">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1.27A7.01 7.01 0 0 1 14 22h-4a7.01 7.01 0 0 1-6.73-5H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/>
+  <path d="M9 15v1"/><path d="M15 15v1"/><path d="M9 11v1"/><path d="M15 11v1"/>
+  </svg>
+  </div>
+  <div class="gmail-toggle-text">
+  <span class="gmail-toggle-title">MCP Server</span>
+  <span class="gmail-toggle-desc">AI 助手接入 — 通过 MCP 协议让 AI 读取邮件、搜索联系人</span>
+  </div>
+  </div>
+  <svg class="guide-arrow" :class="{ open: mcpOpen }" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="6 9 12 15 18 9"/>
+  </svg>
+  </button>
+
+  <transition name="expand">
+  <div v-if="mcpOpen" class="card-body">
+  <!-- 启用开关 -->
+  <div class="field proxy-field">
+  <label class="field-label proxy-label">
+  <label class="toggle-switch">
+  <input type="checkbox" v-model="mcpForm.enabled" />
+  <span class="toggle-slider"></span>
+  </label>
+  <span>启用 MCP 服务器</span>
+  </label>
+  <span class="field-hint">开启后，AI 助手可通过 Bearer Token 连接 MCP 服务读取邮件数据。</span>
+  </div>
+
+  <!-- 端口 -->
+  <div class="field" :class="{ 'notify-dim': !mcpForm.enabled }">
+  <label class="field-label">端口</label>
+  <input
+  class="input"
+  type="number"
+  v-model.number="mcpForm.port"
+  min="1024"
+  max="65535"
+  :disabled="!mcpForm.enabled"
+  style="max-width: 160px;"
+  />
+  <span class="field-hint">子应用挂载模式自动使用主应用端口，此端口仅独立运行（python -m flymail_mcp.server）时生效。</span>
+  </div>
+
+  <!-- 认证令牌 -->
+  <div class="field" :class="{ 'notify-dim': !mcpForm.enabled }">
+  <label class="field-label">认证令牌</label>
+  <div class="field-input proxy-url-row" style="max-width: 600px;">
+  <input
+  class="input"
+  :type="mcpTokenVisible ? 'text' : 'password'"
+  v-model="mcpForm.token_display"
+  :placeholder="mcpForm.has_token ? '••••••••••••••••' : '启用后自动生成'"
+  :disabled="!mcpForm.enabled"
+  readonly
+  autocomplete="off"
+  />
+  <button
+  type="button"
+  class="btn-secret-toggle"
+  @click="mcpTokenVisible = !mcpTokenVisible"
+  :title="mcpTokenVisible ? '隐藏' : '显示'"
+  :disabled="!mcpForm.enabled || !mcpForm.has_token"
+  >
+  <svg v-if="!mcpTokenVisible" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+  <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+  </button>
+  <button
+  type="button"
+  class="check-proxy-btn"
+  :disabled="!mcpForm.enabled || !mcpForm.has_token"
+  @click="copyMcpToken"
+  title="复制令牌"
+  >
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+  <span>{{ mcpCopied ? '已复制' : '复制' }}</span>
+  </button>
+  <button
+  type="button"
+  class="check-proxy-btn"
+  :disabled="!mcpForm.enabled"
+  @click="regenerateMcpToken"
+  title="刷新令牌"
+  >
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+  <span>刷新</span>
+  </button>
+  </div>
+  <span class="field-hint">AI 助手通过此 Bearer Token 连接 MCP 服务。刷新后旧令牌立即失效。</span>
+  </div>
+
+  <!-- 连接方式说明 -->
+  <div class="guide-section" style="margin-bottom: 0;">
+  <div class="guide-body" style="border-top: none; padding: 0;">
+  <div class="guide-content" style="padding: 12px 0;">
+  <div style="font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">连接方式</div>
+  <div class="guide-tabs" style="padding: 0; background: transparent; margin-bottom: 8px;">
+  <button
+  class="guide-tab"
+  :class="{ active: mcpGuideTab === 'claude' }"
+  @click="mcpGuideTab = 'claude'"
+  >Claude Desktop</button>
+  <button
+  class="guide-tab"
+  :class="{ active: mcpGuideTab === 'curl' }"
+  @click="mcpGuideTab = 'curl'"
+  >cURL 测试</button>
+  </div>
+  <div v-if="mcpGuideTab === 'claude'" class="guide-panel" style="padding: 0;">
+  <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 6px;">在 Claude Desktop 的配置文件中添加：</div>
+  <pre class="mcp-config-code" style="margin: 0;">{
+  "mcpServers": {
+    "flymail": {
+      "url": "http://localhost:{{ mcpForm.port || 8080 }}/mcp/sse",
+      "headers": {
+        "Authorization": "Bearer {{ mcpForm.has_token ? '...' : '<your-token>' }}"
+      }
+    }
+  }
+}</pre>
+  </div>
+  <div v-if="mcpGuideTab === 'curl'" class="guide-panel" style="padding: 0;">
+  <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 6px;">使用 cURL 测试 MCP 连接：</div>
+  <pre class="mcp-config-code" style="margin: 0;"># 建立 SSE 连接
+curl -N -H "Authorization: Bearer &lt;token&gt;" \
+  http://localhost:{{ mcpForm.port || 8080 }}/mcp/sse
+
+# 发送 JSON-RPC 请求（新终端）
+curl -X POST \
+  -H "Authorization: Bearer &lt;token&gt;" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
+  http://localhost:{{ mcpForm.port || 8080 }}/mcp/messages/</pre>
+  </div>
+  <!-- 状态指示 -->
+  <div class="mcp-status">
+  <span class="mcp-status-dot" :class="{ 'status-ok': mcpForm.enabled, 'status-off': !mcpForm.enabled }"></span>
+  <span>{{ mcpForm.enabled ? '运行中' : '已停止' }} · 端口 {{ mcpForm.port || 8080 }}</span>
+  </div>
+  </div>
+  </div>
+  </div>
+
+  <!-- 保存按钮 -->
+  <div class="save-bar">
+  <button class="btn btn-primary btn-save" @click="saveMcpSettings" :disabled="mcpSaving">
+  <svg v-if="!mcpSaving" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
+  </svg>
+  <span v-if="mcpSaving" class="saving-text">
+  <span class="saving-dot"></span>
+  保存中...
+  </span>
+  <span v-else>保存设置</span>
+  </button>
+  <transition name="fade">
+  <span v-if="mcpSuccess" class="status-msg success">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="20 6 9 17 4 12"/>
+  </svg>
+  保存成功
+  </span>
+  </transition>
+  <transition name="fade">
+  <span v-if="mcpError" class="status-msg error">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+  </svg>
+  {{ mcpError }}
+  </span>
+  </transition>
+  </div>
+  </div>
+  </transition>
+  </div>
+
   <!-- ==================== 配置教程（可折叠） ==================== -->
   <div class="guide-section">
   <!-- 折叠按钮 -->
@@ -1027,10 +1208,124 @@ async function testProxy() {
   }
 }
 
+// ==================== MCP 服务器设置 ====================
+
+const mcpOpen = ref(false);
+const mcpGuideTab = ref<'claude' | 'curl'>('claude');
+const mcpTokenVisible = ref(false);
+const mcpCopied = ref(false);
+const mcpSaving = ref(false);
+const mcpSuccess = ref(false);
+const mcpError = ref('');
+
+const mcpForm = ref({
+  enabled: false,
+  port: 9000,
+  token_display: '',
+  has_token: false,
+  _full_token: '',
+});
+
+let mcpCopyTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function loadMcpSettings() {
+  try {
+  const data = await api.get('/settings/mcp') as any;
+  mcpForm.value = {
+  enabled: !!data.enabled,
+  port: data.port || 9000,
+  token_display: data.has_token ? '••••••••••••••••' : '',
+  has_token: !!data.has_token,
+  _full_token: '',
+  };
+  } catch (e) {
+  console.error('加载 MCP 设置失败:', e);
+  }
+}
+
+async function saveMcpSettings() {
+  mcpSaving.value = true;
+  mcpSuccess.value = false;
+  mcpError.value = '';
+  try {
+  const res = await api.put('/settings/mcp', {
+  enabled: mcpForm.value.enabled,
+  port: mcpForm.value.port,
+  }) as any;
+  if (res && res.success !== false) {
+  mcpSuccess.value = true;
+  // 首次启用生成 token 时更新显示
+  if (res.has_token && !mcpForm.value.has_token) {
+  mcpForm.value.has_token = true;
+  mcpForm.value.token_display = '••••••••••••••••';
+  }
+  await loadMcpSettings();
+  setTimeout(() => { mcpSuccess.value = false; }, 3000);
+  } else {
+  mcpError.value = res?.message || '保存失败';
+  setTimeout(() => { mcpError.value = ''; }, 5000);
+  }
+  } catch (e: any) {
+  mcpError.value = e.message || '保存失败';
+  setTimeout(() => { mcpError.value = ''; }, 5000);
+  } finally {
+  mcpSaving.value = false;
+  }
+}
+
+async function regenerateMcpToken() {
+  if (!confirm('刷新后旧令牌立即失效，已连接的 AI 助手需更新配置。确定继续？')) {
+  return;
+  }
+  try {
+  const res = await api.post('/settings/mcp/regenerate') as any;
+  if (res.success) {
+  mcpForm.value.has_token = true;
+  mcpForm.value._full_token = res.token;
+  mcpForm.value.token_display = res.token;
+  mcpTokenVisible.value = true;
+  // 自动复制到剪贴板
+  try {
+  await navigator.clipboard.writeText(res.token);
+  mcpCopied.value = true;
+  if (mcpCopyTimer) clearTimeout(mcpCopyTimer);
+  mcpCopyTimer = setTimeout(() => { mcpCopied.value = false; }, 3000);
+  } catch {
+  // 剪贴板 API 可能被拒绝
+  }
+  }
+  } catch (e: any) {
+  mcpError.value = e.message || '刷新失败';
+  setTimeout(() => { mcpError.value = ''; }, 5000);
+  }
+}
+
+async function copyMcpToken() {
+  if (!mcpForm.value.has_token) return;
+  try {
+  // 如果有完整 token（刚刷新过），直接用
+  let token = mcpForm.value._full_token;
+  if (!token) {
+  // 否则提示用户先刷新令牌
+  mcpError.value = '请先刷新令牌后再复制';
+  setTimeout(() => { mcpError.value = ''; }, 3000);
+  return;
+  }
+  await navigator.clipboard.writeText(token);
+  mcpCopied.value = true;
+  if (mcpCopyTimer) clearTimeout(mcpCopyTimer);
+  mcpCopyTimer = setTimeout(() => { mcpCopied.value = false; }, 3000);
+  } catch {
+  mcpError.value = '复制失败，请手动复制';
+  setTimeout(() => { mcpError.value = ''; }, 3000);
+  }
+}
+
 onMounted(() => {
   loadSettingsData();
   loadBackupSettings();
   loadNotifySettings();
+  loadMcpSettings();
   // 监听点击事件，实现下拉面板点击外部关闭
   document.addEventListener('click', handleBackupClickOutside);
 });
@@ -2932,5 +3227,71 @@ function onBackupPathConfirmed(path: string) {
   font-size: 14px;
   text-align: center;
   padding: 20px 0;
+}
+
+/* ==================== MCP 服务器设置样式 ==================== */
+
+.mcp-config-code {
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  font-size: 12px;
+  padding: 12px 16px;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.6;
+  color: var(--text-primary);
+  overflow-x: auto;
+}
+
+.mcp-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 12px;
+}
+
+.mcp-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.mcp-status-dot.status-ok {
+  background: var(--color-success, #34C759);
+  box-shadow: 0 0 4px var(--color-success, #34C759);
+}
+
+.mcp-status-dot.status-off {
+  background: var(--text-tertiary);
+}
+
+/* 复用现有 btn-secret-toggle 样式，确保对齐 */
+.btn-secret-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-full, 20px);
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.btn-secret-toggle:hover:not(:disabled) {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.btn-secret-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>
